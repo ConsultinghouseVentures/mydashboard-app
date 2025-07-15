@@ -311,7 +311,17 @@ app.get('/api/clients/:uid', verifyToken, async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
+// Optional: Add a root route for testing Vercel deployment
+app.get('/', (req, res) => {
+  res.send('Backend server is running!');
 });
+
+module.exports = app;  // Export the app for Vercel serverless functions
+
+// Conditional listen for local development only
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Backend running on port ${PORT}`);
+  });
+}
