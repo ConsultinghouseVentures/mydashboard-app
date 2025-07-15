@@ -1,24 +1,34 @@
 const express = require('express');
 const { Pool } = require('pg');
-require('dotenv').config(); // Load environment variables
+require('dotenv').config();
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Database connection
 const db = new Pool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT,
-  ssl: { rejectUnauthorized: true },
+  ssl: { rejectUnauthorized: false } // Temporary workaround for self-signed certificate
 });
 
-const SECRET_KEY = 'your-secure-key'; // Replace with a strong, unique key
+console.log('DB Pool Config:', {
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+  ssl: { rejectUnauthorized: false }
+});
+
+const SECRET_KEY = 'your-very-secure-secret-key'; // Replace with a strong, unique key in production
 
 // Login endpoint
 app.post('/api/login', async (req, res) => {
@@ -36,26 +46,3 @@ app.post('/api/login', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// Verify token middleware
-const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'No token' });
-  jwt.verify(token, SECRET_KEY, (err, decoded) => {
-    if (err) return res.status(401).json({ message: 'Invalid token' });
-    req.user = decoded;
-    next();
-  });
-};
-
-// Get service items
-app.get('/api/serviceitems', verifyToken, async (req, res) => {
-  try {
-    const result = await db.query('SELECT uid, title, detail_description, date_from, date_to FROM tx_mpmydashboard_domain_model_serviceitems');
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.listen(3001, () => console.log('Backend running on port 3001'));
