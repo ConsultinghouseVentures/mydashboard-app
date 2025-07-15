@@ -1,0 +1,128 @@
+/* src/styles.css */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  --glass-blur: blur(10px);
+  --glass-blur-light: blur(5px);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+.glass-effect {
+  background-color: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+
+.glass-effect-light {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: var(--glass-blur-light);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  border-radius: 4px;
+}
+
+.fluid-width-sm {
+  width: min(15vw, 60px);
+}
+
+.fluid-width-md {
+  width: min(25vw, 240px);
+}
+
+.content-container {
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar-container {
+  display: block !important;
+  position: fixed;
+  top: 64px;
+  left: 0;
+  z-index: 1200;
+  min-height: calc(100vh - 64px);
+}
+
+.search-box {
+  background-color: rgba(255, 255, 255, 0.15);
+  backdrop-filter: var(--glass-blur-light);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  transition: all 0.3s ease;
+  width: 100%;
+  max-width: 400px;
+}
+
+.search-box:hover, .search-box:focus-within {
+  background-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+}
+
+.search-box .MuiInputBase-root {
+  border: none;
+}
+
+.search-box .MuiOutlinedInput-notchedOutline {
+  border: none;
+}
+
+.search-box:hover .MuiOutlinedInput-notchedOutline,
+.search-box:focus-within .MuiOutlinedInput-notchedOutline {
+  border: none;
+}
+
+.search-box .MuiInputBase-input {
+  color: white;
+  padding: 8px 12px;
+}
+
+.search-box .MuiInputBase-input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+  opacity: 1;
+}
+
+.search-box .MuiSvgIcon-root {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.search-box .MuiInputBase-input:focus {
+  outline: none;
+}
+
+.sidebar-container .MuiListItem-root {
+  visibility: visible !important;
+  min-height: 48px;
+  opacity: 1 !important;
+}
+
+.sidebar-container .MuiList-root:last-child {
+  padding-bottom: 24px;
+}
+
+/* Fallback for browsers without backdrop-filter */
+@supports not (backdrop-filter: blur(10px)) {
+  .glass-effect {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+  .glass-effect-light, .search-box {
+    background-color: rgba(255, 255, 255, 0.15);
+  }
+}
