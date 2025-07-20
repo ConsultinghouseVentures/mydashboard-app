@@ -16,6 +16,7 @@ import {
   InputLabel,
 } from '@mui/material';
 import LayoutLightbox from './Layout_Lightbox.jsx';
+import { useSnackbar } from '../context/SnackbarContext';
 
 const TableLightbox = ({
   open = false,
@@ -27,6 +28,7 @@ const TableLightbox = ({
 }) => {
   const [currentMode, setCurrentMode] = useState(mode);
   const [currentData, setCurrentData] = useState(data);
+  const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     if (open) {
@@ -49,11 +51,10 @@ const TableLightbox = ({
       console.log('Attempting to save data:', currentData);
       const updatedData = await onSave(currentData);
       console.log('Save successful, updated data:', updatedData);
-      setCurrentData(updatedData); // Sync with the latest data from server
-      setCurrentMode('view'); // Transition to read-only
+      onClose();
     } catch (error) {
       console.error('Save failed:', error);
-      // Optionally show error to user (e.g., alert or snackbar)
+      showSnackbar(error.message || 'Save failed', 'error');
     }
   };
 
@@ -96,7 +97,7 @@ const TableLightbox = ({
                     ? new Date(currentData[col.field]).toLocaleString()
                     : currentData?.[col.field] || 'N/A'}
                 </Typography>
-              ) : col.field === 'status' ? (
+              ) : col.type === 'singleSelect' ? (
                 <FormControl fullWidth size="small" sx={{ maxWidth: '100%' }}>
                   <InputLabel>{col.headerName}</InputLabel>
                   <Select
@@ -104,8 +105,11 @@ const TableLightbox = ({
                     onChange={(e) => handleFieldChange(col.field, e.target.value)}
                     label={col.headerName}
                   >
-                    <MenuItem value="Active">Active</MenuItem>
-                    <MenuItem value="Inactive">Inactive</MenuItem>
+                    {col.valueOptions.map(opt => (
+                      <MenuItem key={opt} value={opt}>
+                        {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               ) : (

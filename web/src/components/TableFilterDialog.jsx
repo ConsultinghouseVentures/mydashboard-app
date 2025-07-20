@@ -1,5 +1,3 @@
-// TableFilterDialog.jsx
-
 import React, { useState, useEffect, useContext } from 'react';
 import {
   Box,
@@ -19,14 +17,23 @@ import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import LayoutLightbox from './Layout_Lightbox.jsx';
 import { LayoutContext } from './Layout_TableOverview.jsx';
 
+const getOperators = (type) => {
+  switch (type) {
+    case 'date':
+      return ['equals', 'greaterThan', 'lessThan'];
+    case 'singleSelect':
+      return ['equals', 'contains'];
+    default:
+      return ['equals', 'contains'];
+  }
+};
+
 const TableFilterDialog = ({
   open = false,
-  anchorEl = null,
   columnsConfig = [],
   filterRules = [],
   setFilterRules = () => {},
   onClose = () => {},
-  onFilterClick,
 }) => {
   const [tempFilterRules, setTempFilterRules] = useState(filterRules || []);
   const { lightboxStyles } = useContext(LayoutContext) || {};
@@ -39,7 +46,7 @@ const TableFilterDialog = ({
 
   useEffect(() => {
     if (open) {
-      setTempFilterRules(filterRules || []);
+      setTempFilterRules(filterRules.map(rule => ({ ...rule, id: rule.id || Date.now() })));
     }
   }, [open, filterRules]);
 
@@ -47,17 +54,40 @@ const TableFilterDialog = ({
     if (columnsConfig.length === 0) return;
     setTempFilterRules([
       ...tempFilterRules,
-      { field: columnsConfig[0].field, operator: 'equals', value: '', logicalOperator: 'AND' },
+      { id: Date.now(), field: '', operator: '', value: '', type: 'string', logicalOperator: 'AND' },
     ]);
   };
 
-  const updateRule = (index, field, operator, value, logicalOperator) => {
+  const handleFieldChange = (index, value) => {
+    const selectedColumn = columnsConfig.find((col) => col.field === value);
+    const type = selectedColumn?.type || 'string';
     const newRules = [...tempFilterRules];
-    newRules[index] = { field, operator, value, logicalOperator };
+    newRules[index].field = value;
+    newRules[index].type = type;
+    newRules[index].operator = '';
+    newRules[index].value = '';
     setTempFilterRules(newRules);
   };
 
-  const removeRule = (index) => {
+  const handleOperatorChange = (index, value) => {
+    const newRules = [...tempFilterRules];
+    newRules[index].operator = value;
+    setTempFilterRules(newRules);
+  };
+
+  const handleValueChange = (index, value) => {
+    const newRules = [...tempFilterRules];
+    newRules[index].value = value;
+    setTempFilterRules(newRules);
+  };
+
+  const handleLogicalChange = (index, value) => {
+    const newRules = [...tempFilterRules];
+    newRules[index].logicalOperator = value;
+    setTempFilterRules(newRules);
+  };
+
+  const handleDeleteRule = (index) => {
     const newRules = tempFilterRules.filter((_, i) => i !== index);
     setTempFilterRules(newRules);
   };
@@ -80,7 +110,6 @@ const TableFilterDialog = ({
         console.log('TableFilterDialog onClose triggered', { event, reason });
         onClose(event, reason);
       }}
-      {...(onFilterClick ? { onClick: onFilterClick } : {})}
     >
       <DialogTitle sx={effectiveLightboxStyles.title}>Add Filter Rules</DialogTitle>
       <DialogContent sx={effectiveLightboxStyles.content}>
@@ -89,61 +118,92 @@ const TableFilterDialog = ({
             No filter rules added. Add a rule to filter the table or apply to clear filters.
           </Typography>
         ) : (
-          tempFilterRules.map((rule, index) => (
-            <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 0.5 }}>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <InputLabel sx={{ whiteSpace: 'nowrap' }}>Field</InputLabel>
-                <Select
-                  value={rule.field || ''}
-                  onChange={(e) => updateRule(index, e.target.value, rule.operator, rule.value, rule.logicalOperator)}
-                  label="Field"
-                  sx={{ fontSize: '0.75rem', height: '30px', p: 0.5 }}
-                >
-                  {columnsConfig.map((col) => (
-                    <MenuItem key={col.field} value={col.field}>{col.headerName}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <InputLabel sx={{ whiteSpace: 'nowrap' }}>Operator</InputLabel>
-                <Select
-                  value={rule.operator || 'equals'}
-                  onChange={(e) => updateRule(index, rule.field, e.target.value, rule.value, rule.logicalOperator)}
-                  label="Operator"
-                  sx={{ fontSize: '0.75rem', height: '30px', p: 0.5 }}
-                >
-                  <MenuItem value="equals">Equals</MenuItem>
-                  <MenuItem value="contains">Contains</MenuItem>
-                  <MenuItem value="greater than">Greater Than</MenuItem>
-                  <MenuItem value="less than">Less Than</MenuItem>
-                </Select>
-              </FormControl>
-              <TextField
-                size="small"
-                label="Value"
-                value={rule.value || ''}
-                onChange={(e) => updateRule(index, rule.field, rule.operator, e.target.value, rule.logicalOperator)}
-                sx={{ minWidth: 120 }}
-              />
-              {index > 0 && (
-                <FormControl size="small" sx={{ minWidth: 90 }}>
-                  <InputLabel sx={{ whiteSpace: 'nowrap' }}>Logic</InputLabel>
+          tempFilterRules.map((rule, index) => {
+            const selectedColumn = columnsConfig.find((col) => col.field === rule.field);
+            const operators = getOperators(rule.type);
+            const isSelect = rule.type === 'singleSelect' && selectedColumn?.valueOptions;
+            return (
+              <Box key={rule.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 0.5 }}>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel sx={{ whiteSpace: 'nowrap' }}>Field</InputLabel>
                   <Select
-                    value={rule.logicalOperator || 'AND'}
-                    onChange={(e) => updateRule(index, rule.field, rule.operator, rule.value, e.target.value)}
-                    label="Logic"
+                    value={rule.field || ''}
+                    onChange={(e) => handleFieldChange(index, e.target.value)}
+                    label="Field"
                     sx={{ fontSize: '0.75rem', height: '30px', p: 0.5 }}
                   >
-                    <MenuItem value="AND">AND</MenuItem>
-                    <MenuItem value="OR">OR</MenuItem>
+                    {columnsConfig
+                      .filter((col) => col.field !== 'actions')
+                      .map((col) => (
+                        <MenuItem key={col.field} value={col.field}>
+                          {col.headerName}
+                        </MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
-              )}
-              <IconButton size="small" onClick={() => removeRule(index)}>
-                <DeleteIcon />
-              </IconButton>
-            </Box>
-          ))
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel sx={{ whiteSpace: 'nowrap' }}>Operator</InputLabel>
+                  <Select
+                    value={rule.operator || ''}
+                    onChange={(e) => handleOperatorChange(index, e.target.value)}
+                    label="Operator"
+                    disabled={!rule.field}
+                    sx={{ fontSize: '0.75rem', height: '30px', p: 0.5 }}
+                  >
+                    {operators.map((op) => (
+                      <MenuItem key={op} value={op}>
+                        {op.charAt(0).toUpperCase() + op.slice(1).replace(/([A-Z])/g, ' $1')}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {isSelect ? (
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <InputLabel sx={{ whiteSpace: 'nowrap' }}>Value</InputLabel>
+                    <Select
+                      value={rule.value || ''}
+                      onChange={(e) => handleValueChange(index, e.target.value)}
+                      label="Value"
+                      disabled={!rule.operator}
+                      sx={{ fontSize: '0.75rem', height: '30px', p: 0.5 }}
+                    >
+                      {selectedColumn.valueOptions.map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {option}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    size="small"
+                    label="Value"
+                    value={rule.value || ''}
+                    onChange={(e) => handleValueChange(index, e.target.value)}
+                    disabled={!rule.operator}
+                    sx={{ minWidth: 120 }}
+                  />
+                )}
+                {index > 0 && (
+                  <FormControl size="small" sx={{ minWidth: 90 }}>
+                    <InputLabel sx={{ whiteSpace: 'nowrap' }}>Logic</InputLabel>
+                    <Select
+                      value={rule.logicalOperator || 'AND'}
+                      onChange={(e) => handleLogicalChange(index, e.target.value)}
+                      label="Logic"
+                      sx={{ fontSize: '0.75rem', height: '30px', p: 0.5 }}
+                    >
+                      <MenuItem value="AND">AND</MenuItem>
+                      <MenuItem value="OR">OR</MenuItem>
+                    </Select>
+                  </FormControl>
+                )}
+                <IconButton size="small" onClick={() => handleDeleteRule(index)}>
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
+            );
+          })
         )}
         <Button
           variant="outlined"
@@ -163,7 +223,7 @@ const TableFilterDialog = ({
         <Button
           size="small"
           onClick={handleApplyFilters}
-          disabled={tempFilterRules.length > 0 && tempFilterRules.some((rule) => !rule.value?.trim())}
+          disabled={tempFilterRules.length > 0 && tempFilterRules.some((rule) => !rule.value?.toString().trim())}
         >
           Apply Filters
         </Button>
@@ -173,24 +233,34 @@ const TableFilterDialog = ({
 };
 
 export const applyFilterRules = (data, rules, searchFilter = () => true) => {
+  const validRules = rules.filter((rule) => rule.field && rule.operator && rule.value.toString().trim());
+  if (validRules.length === 0) {
+    return data.filter(searchFilter);
+  }
   return data.filter((item) => {
-    if (rules.length === 0) return searchFilter(item);
-
-    const filteredByRules = rules.reduce((acc, rule, index) => {
-      const value = item[rule.field];
+    const filteredByRules = validRules.reduce((acc, rule, index) => {
+      let itemValue = item[rule.field];
+      let filterValue = rule.value;
+      if (rule.type === 'date') {
+        itemValue = itemValue ? new Date(itemValue) : null;
+        filterValue = new Date(filterValue);
+      } else {
+        itemValue = Array.isArray(itemValue) ? itemValue.map(v => String(v).toLowerCase()) : String(itemValue || '').toLowerCase();
+        filterValue = String(filterValue).toLowerCase();
+      }
       let isValid = false;
       switch (rule.operator) {
         case 'equals':
-          isValid = value === rule.value;
+          isValid = Array.isArray(itemValue) ? itemValue.includes(filterValue) : itemValue === filterValue;
           break;
         case 'contains':
-          isValid = value?.toString().toLowerCase().includes(rule.value.toLowerCase());
+          isValid = Array.isArray(itemValue) ? itemValue.some(v => v.includes(filterValue)) : itemValue.includes(filterValue);
           break;
-        case 'greater than':
-          isValid = new Date(value) > new Date(rule.value);
+        case 'greaterThan':
+          isValid = itemValue > filterValue;
           break;
-        case 'less than':
-          isValid = new Date(value) < new Date(rule.value);
+        case 'lessThan':
+          isValid = itemValue < filterValue;
           break;
         default:
           isValid = true;
@@ -200,8 +270,7 @@ export const applyFilterRules = (data, rules, searchFilter = () => true) => {
       }
       const logOp = rule.logicalOperator || 'AND';
       return logOp === 'AND' ? acc && isValid : acc || isValid;
-    }, false);
-
+    }, true);
     return filteredByRules && searchFilter(item);
   });
 };

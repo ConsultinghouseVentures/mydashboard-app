@@ -6,6 +6,7 @@ import * as Yup from 'yup';
 import { TextField, Button, Typography, Container, Box, Alert } from '@mui/material';
 import api from '../services/api';
 import { useSnackbar } from '../context/SnackbarContext';
+import { useUser } from '../context/UserContext';
 
 const LoginSchema = Yup.object().shape({
   email: Yup.string().email('Must be a valid email').required('Email is required'),
@@ -16,6 +17,7 @@ const Login = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const { showSnackbar } = useSnackbar();
+  const { refreshUser } = useUser();
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
@@ -25,6 +27,7 @@ const Login = () => {
       console.log('Extracted token:', token);
       localStorage.setItem('token', token);
       console.log('Token set in localStorage:', localStorage.getItem('token'));
+      await refreshUser(); // Await to ensure profile is fetched
       setError('');
       navigate('/dashboard', { replace: true });
     } catch (err) {

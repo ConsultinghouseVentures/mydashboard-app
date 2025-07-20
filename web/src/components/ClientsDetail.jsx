@@ -1,7 +1,26 @@
-import React, { useEffect, useState, useRef } from 'react';
+// src/components/ClientsDetail.jsx
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Typography, Grid, Button, List, ListItem, ListItemText, Divider, TextField, Select, MenuItem, InputLabel, FormControl, Tabs, Tab } from '@mui/material';
+import {
+  Typography,
+  Box,
+  Button,
+  TextField,
+  IconButton,
+  Card,
+  CardContent,
+  Grid,
+  MenuItem,
+  Select,
+  InputLabel,
+  FormControl,
+  Tabs,
+  Tab,
+  CircularProgress,
+} from '@mui/material';
+import { ArrowBack, Edit, Save } from '@mui/icons-material';
 import api from '../services/api';
+import { useSnackbar } from '../context/SnackbarContext';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -13,11 +32,7 @@ function TabPanel(props) {
       aria-labelledby={`tab-${index}`}
       {...other}
     >
-      {value === index && (
-        <Box sx={{ p: 3 }}>
-          {children}
-        </Box>
-      )}
+      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
     </div>
   );
 }
@@ -25,498 +40,324 @@ function TabPanel(props) {
 const ClientsDetail = () => {
   const { uid } = useParams();
   const navigate = useNavigate();
+  const { showSnackbar } = useSnackbar();
   const [client, setClient] = useState(null);
-  const [formData, setFormData] = useState({});
-  const [error, setError] = useState(null);
-  const [editMode, setEditMode] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [tabValue, setTabValue] = useState(0);
-  const contentRef = useRef(null);
+  const [editMode, setEditMode] = useState(false);
 
   useEffect(() => {
-    const fetchClientDetail = async () => {
+    const fetchClient = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.log('No token, redirecting to login');
         navigate('/login', { replace: true });
         return;
       }
       try {
-        const response = await api.get(`/api/clients/${uid}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Client detail API response:', response.data);
-        const data = response.data || {};
-        // Ensure status is one of the valid options or fallback to empty string
-        const validStatus = ['Active', 'Inactive'].includes(data.status) ? data.status : '';
-        setClient(data);
-        setFormData({ ...data, address_region: data.address_region || '', status: validStatus });
-        setError(null);
-      } catch (error) {
-        console.error('Fetch client detail error:', {
-          message: error.message,
-          url: error.config?.url,
-          response: error.response
-            ? {
-                status: error.response.status,
-                data: error.response.data,
-              }
-            : 'No response data',
-        });
-        setError(error.response?.data?.message || 'Failed to fetch client details');
-        if (error.response?.status === 401) {
-          console.log('Unauthorized, redirecting to login');
+        console.log('Fetching client for UID:', uid);
+        setLoading(true);
+        const response = await api.get(`/api/clients/${uid}`, { headers: { Authorization: `Bearer ${token}` } });
+        setClient(response);
+      } catch (err) {
+        console.error('Fetch client error:', err);
+        console.log('Error response:', err.response ? err.response.data : err.message);
+        if (err.response?.status === 401) {
           localStorage.removeItem('token');
           navigate('/login', { replace: true });
+        } else {
+          showSnackbar('Failed to fetch client details', 'error');
         }
+      } finally {
+        setLoading(false);
       }
     };
-    fetchClientDetail();
-  }, [uid, navigate]);
-
-  const handleTabChange = (event, newValue) => {
-    setTabValue(newValue);
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-      // Ensure status is valid when changed
-      ...(name === 'status' && !['Active', 'Inactive'].includes(value) ? { status: '' } : {}),
-    }));
-  };
+    fetchClient();
+  }, [uid, navigate, showSnackbar]);
 
   const handleSave = async () => {
+    const token = localStorage.getItem('token');
     try {
-      const response = await api.put(`/api/clients/${uid}`, formData, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      const updatedData = response.data || {};
-      setClient(updatedData);
-      setFormData({ ...updatedData, address_region: updatedData.address_region || '' });
+      const response = await api.put(`/api/clients/${uid}`, client, { headers: { Authorization: `Bearer ${token}` } });
+      setClient(response);
       setEditMode(false);
-      setError(null);
+      showSnackbar('Client updated successfully', 'success');
     } catch (err) {
       console.error('Update client error:', err);
-      setError('Failed to update client details');
+      if (err.response?.status === 401) {
+        localStorage.removeItem('token');
+        navigate('/login', { replace: true });
+      } else {
+        showSnackbar('Failed to update client', 'error');
+      }
     }
   };
 
-  const handleCancel = () => {
-    setFormData({ ...client, address_region: client.address_region || '' });
-    setEditMode(false);
+  const handleChange = (field) => (event) => {
+    const value = event.target.value;
+    setClient((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleScroll = (id) => {
-    const element = document.getElementById(id);
-    if (element && contentRef.current) {
-      contentRef.current.scrollTo({
-        top: element.offsetTop,
-        behavior: 'smooth',
-      });
-    }
-  };
-
-  if (error) {
+  if (loading) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Typography color="error">{error}</Typography>
-        <Button variant="contained" onClick={() => navigate('/clients')}>
-          Back to Clients
-        </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
       </Box>
     );
   }
 
   if (!client) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Typography>Loading...</Typography>
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6">Client not found</Typography>
       </Box>
     );
   }
 
-  const sections = [
-    { id: 'general', name: 'General' },
-    { id: 'address', name: 'Address' },
-    { id: 'bank', name: 'Bank' },
-    { id: 'tax', name: 'Tax' },
-    { id: 'insurance', name: 'Insurance' },
-  ];
-
-  const countries = [
-    { code: 'US', name: 'United States' },
-    { code: 'DE', name: 'Germany' },
-    { code: 'GB', name: 'United Kingdom' },
-    { code: 'FR', name: 'France' },
-    { code: 'CA', name: 'Canada' },
-    { code: 'AU', name: 'Australia' },
-    { code: 'JP', name: 'Japan' },
-    { code: 'CN', name: 'China' },
-    { code: 'IN', name: 'India' },
-    { code: 'BR', name: 'Brazil' },
-    // Add more as needed
-  ];
-
-  const addressConfigs = {
-    US: {
-      hasRegion: true,
-      postalCodeLabel: 'ZIP Code',
-      localityLabel: 'City',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_region', 'address_postal_code', 'address_country'],
-    },
-    DE: {
-      hasRegion: false,
-      postalCodeLabel: 'PLZ',
-      localityLabel: 'City',
-      streetLabel: 'Street and House Number',
-      required: ['address_street', 'address_postal_code', 'address_locality', 'address_country'],
-    },
-    GB: {
-      hasRegion: false,
-      postalCodeLabel: 'Postcode',
-      localityLabel: 'Town/City',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_postal_code', 'address_country'],
-    },
-    FR: {
-      hasRegion: false,
-      postalCodeLabel: 'Code Postal',
-      localityLabel: 'Ville',
-      streetLabel: 'Adresse',
-      required: ['address_street', 'address_postal_code', 'address_locality', 'address_country'],
-    },
-    CA: {
-      hasRegion: true,
-      postalCodeLabel: 'Postal Code',
-      localityLabel: 'City',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_region', 'address_postal_code', 'address_country'],
-    },
-    AU: {
-      hasRegion: true,
-      postalCodeLabel: 'Postcode',
-      localityLabel: 'Suburb',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_region', 'address_postal_code', 'address_country'],
-    },
-    JP: {
-      hasRegion: true,
-      postalCodeLabel: 'Postal Code',
-      localityLabel: 'City',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_region', 'address_postal_code', 'address_country'],
-    },
-    CN: {
-      hasRegion: true,
-      postalCodeLabel: 'Postal Code',
-      localityLabel: 'City',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_region', 'address_postal_code', 'address_country'],
-    },
-    IN: {
-      hasRegion: true,
-      postalCodeLabel: 'PIN Code',
-      localityLabel: 'City',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_region', 'address_postal_code', 'address_country'],
-    },
-    BR: {
-      hasRegion: true,
-      postalCodeLabel: 'CEP',
-      localityLabel: 'City',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_locality', 'address_region', 'address_postal_code', 'address_country'],
-    },
-    default: {
-      hasRegion: false,
-      postalCodeLabel: 'Postal Code',
-      localityLabel: 'Locality',
-      streetLabel: 'Street Address',
-      required: ['address_street', 'address_postal_code', 'address_locality', 'address_country'],
-    },
-  };
-
-  const currentCountry = formData.address_country || '';
-  const config = addressConfigs[currentCountry] || addressConfigs.default;
-
   return (
-    <Box sx={{ width: '100%', minWidth: '800px', position: 'relative', overflowX: 'auto', height: 'calc(100vh - 64px)' }}>
-      <Box sx={{ position: 'sticky', top: 0, zIndex: 1200, backgroundColor: '#fff' }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-            {!editMode && <Button variant="contained" onClick={() => navigate('/clients')}>
-              Back to Clients
-            </Button>}
-            {editMode ? (
-              <>
-                <Button variant="contained" color="primary" onClick={handleSave}>
-                  Save
-                </Button>
-                <Button variant="outlined" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button variant="contained" color="primary" onClick={() => setEditMode(true)}>
-                Edit
-              </Button>
-            )}
-          </Box>
-          <Typography variant="h4" component="h1" sx={{ ml: 0, textAlign: 'left' }}>
-            Client Details - {client.client_name || 'Unknown'}
-          </Typography>
-          <Tabs value={tabValue} onChange={handleTabChange} aria-label="client tabs" sx={{ mb: 2 }}>
-            <Tab label="Information" />
-            <Tab label="Shareholder" />
-            <Tab label="Employees" />
-            <Tab label="Active Services" />
-            <Tab label="Invoices" />
-            <Tab label="Documents" />
-            <Tab label="Letters" />
-          </Tabs>
-        </Box>
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">
+          Client Details: {client.client_name}
+        </Typography>
+        <IconButton onClick={() => navigate('/clients')}>
+          <ArrowBack />
+        </IconButton>
       </Box>
-      <Box sx={{ display: 'flex', flexDirection: 'row', height: 'calc(100vh - 64px)' }}>
-        <Box
-          sx={{
-            width: 300, // Increased width for consistency
-            pr: 2,
-            borderRight: 1,
-            borderColor: 'divider',
-            position: 'sticky',
-            top: 64, // Below the sticky header (approx. 64px height)
-            height: 'calc(100vh - 64px)',
-            overflowY: 'hidden', // Prevent scrolling in side menu
-            backgroundColor: '#fff',
-            zIndex: 1000,
-          }}
-        >
-          <List sx={{ pt: 0 }}>
-            {sections.map((section) => (
-              <ListItem key={section.id} button onClick={() => handleScroll(section.id)}>
-                <ListItemText primary={section.name} />
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-        <Box ref={contentRef} sx={{ flexGrow: 1, pl: 3, overflowY: 'auto', maxHeight: 'calc(100vh - 64px)' }}>
-          <Box sx={{ position: 'relative', maxWidth: '600px' }}> {/* Reduced max width for consistency */}
-            <TabPanel value={tabValue} index={0}>
-              <Box id="general" sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  General
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <Grid container spacing={0}>
-                  <Field label="Client Name" name="client_name" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Client Status" name="client_status" options={['Incorporated']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Incorporation Date" name="incorporation_date" type="date" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Company Form" name="company_form" options={['GmbH']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Industry" name="industry" options={['Business Products & Services']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Business Purpose" name="business_purpose" multiline={true} rows={4} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="# Employees" name="num_employees" options={['5-25']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Annual Revenue" name="annual_revenue" options={['€0 - €50.000']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Home Country" name="home_country" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Managing Director" name="managing_director" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Phone" name="phone" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Fax" name="fax" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Email" name="email" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Website" name="website" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Remarks" name="remarks" multiline={true} rows={4} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Creation Date" name="creation_date" type="date" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Status" name="status" options={['Active', 'Inactive']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Service Limited" name="service_limited" options={['No']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="NanoNets" name="nanonets" options={['Enabled']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Account No." name="account_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Internal CRM No." name="internal_crm_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Internal Accounting No." name="internal_accounting_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Internal Payroll No." name="internal_payroll_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Internal Revenue Tax Account" name="internal_revenue_tax_account" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Purchase Order No." name="purchase_order_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Company Type" name="company_type" options={['Client']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="ID" name="uid" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Created At" name="created_at" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Updated At" name="updated_at" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Created By" name="created_by" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                </Grid>
-              </Box>
-              <Box id="address" sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Address
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <Grid container spacing={0}>
-                  <Field label={config.streetLabel || 'Street Address'} name="address_street" required={config.required.includes('address_street')} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label={config.localityLabel || 'Locality'} name="address_locality" required={config.required.includes('address_locality')} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  {config.hasRegion && (
-                    <Field label="Region/State/Province" name="address_region" required={config.required.includes('address_region')} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  )}
-                  <Field label={config.postalCodeLabel || 'Postal Code'} name="address_postal_code" required={config.required.includes('address_postal_code')} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Grid item xs={4}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Country
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={8}>
-                    {!editMode ? (
-                      <Typography variant="body1">
-                        {client.address_country || 'N/A'}
-                      </Typography>
-                    ) : (
-                      <FormControl fullWidth required={config.required.includes('address_country')}>
-                        <InputLabel>Country</InputLabel>
-                        <Select
-                          name="address_country"
-                          value={formData.address_country || ''}
-                          onChange={handleChange}
-                        >
-                          {countries.map((country) => (
-                            <MenuItem key={country.code} value={country.code}>
-                              {country.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    )}
-                  </Grid>
-                  {!editMode && (
-                    <Grid item xs={12}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        Formatted Address
-                      </Typography>
-                      <Typography variant="body1">
-                        {client.address_street || ''}<br />
-                        {client.address_locality || ''}{client.address_region ? `, ${client.address_region}` : ''}<br />
-                        {client.address_postal_code || ''}<br />
-                        {client.address_country || ''}
-                      </Typography>
-                    </Grid>
-                  )}
-                </Grid>
-              </Box>
-              <Box id="bank" sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Bank
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <Grid container spacing={0}>
-                  <Field label="Bank Name" name="bank_name" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Bank Code" name="bank_code" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Bank Account No." name="bank_account_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="IBAN" name="iban" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="SWIFT Code (BIC)" name="swift_code" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                </Grid>
-              </Box>
-              <Box id="tax" sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Tax
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <Grid container spacing={0}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Accounting Tax Office
-                  </Typography>
-                  <Field label="Tax Authority" name="tax_authority" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Bank Name" name="tax_office_bank_name" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="IBAN" name="tax_office_iban" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Bank SWIFT/BIC" name="tax_office_bank_swift" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Bank Address" name="tax_office_bank_address" multiline={true} rows={4} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Contact" name="tax_office_contact" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Contact's Phone" name="tax_office_contact_phone" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="ELSTER" name="elster" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Direct Debit (SEPA)" name="direct_debit_sepa" options={['Inactive']} editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Fiscal Year Start Date" name="fiscal_year_start_date" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="VAT ID" name="vat_id" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Operations No." name="operations_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Tax No." name="tax_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Payroll Tax No." name="payroll_tax_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Register Authority" name="register_authority" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Register ID" name="register_id" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                </Grid>
-              </Box>
-              <Box id="insurance" sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Insurance
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <Grid container spacing={0}>
-                  <Field label="Accident Insurance Name" name="accident_insurance_name" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                  <Field label="Accident Insurance No." name="accident_insurance_no" editMode={editMode} formData={formData} client={client} handleChange={handleChange} />
-                </Grid>
-              </Box>
-            </TabPanel>
-            <TabPanel value={tabValue} index={1}>
-              <Typography variant="h6" gutterBottom>
-                Shareholder
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              {/* Add Shareholder content here if needed */}
-              <Typography variant="body1">Shareholder details to be implemented.</Typography>
-            </TabPanel>
-            <TabPanel value={tabValue} index={2}>
-              <Typography variant="h6" gutterBottom>
-                Employees
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              {/* Add Employees content here if needed */}
-              <Typography variant="body1">Employees details to be implemented.</Typography>
-            </TabPanel>
-            <TabPanel value={tabValue} index={3}>
-              <Typography variant="h6" gutterBottom>
-                Active Services
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              {/* Add Active Services content here if needed */}
-              <Typography variant="body1">Active Services details to be implemented.</Typography>
-            </TabPanel>
-            <TabPanel value={tabValue} index={4}>
-              <Typography variant="h6" gutterBottom>
-                Invoices
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              {/* Add Invoices content here if needed */}
-              <Typography variant="body1">Invoices details to be implemented.</Typography>
-            </TabPanel>
-            <TabPanel value={tabValue} index={5}>
-              <Typography variant="h6" gutterBottom>
-                Documents
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              {/* Add Documents content here if needed */}
-              <Typography variant="body1">Documents details to be implemented.</Typography>
-            </TabPanel>
-            <TabPanel value={tabValue} index={6}>
-              <Typography variant="h6" gutterBottom>
-                Letters
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              {/* Add Letters content here if needed */}
-              <Typography variant="body1">Letters details to be implemented.</Typography>
-            </TabPanel>
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-              {!editMode && <Button variant="contained" onClick={() => navigate('/clients')}>
-                Back to Clients
-              </Button>}
-              {editMode ? (
-                <>
-                  <Button variant="contained" color="primary" onClick={handleSave}>
-                    Save
-                  </Button>
-                  <Button variant="outlined" onClick={handleCancel}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button variant="contained" color="primary" onClick={() => setEditMode(true)}>
-                  Edit
-                </Button>
-              )}
-            </Box>
-          </Box>
-        </Box>
+      <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered>
+        <Tab label="General" />
+        <Tab label="Address" />
+        <Tab label="Bank" />
+        <Tab label="Tax" />
+        <Tab label="Other" />
+      </Tabs>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        {!editMode ? (
+          <Button startIcon={<Edit />} onClick={() => setEditMode(true)}>
+            Edit
+          </Button>
+        ) : (
+          <Button startIcon={<Save />} color="primary" variant="contained" onClick={handleSave}>
+            Save
+          </Button>
+        )}
+      </Box>
+
+      <TabPanel value={tabValue} index={0}>
+        <Card>
+          <CardContent>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Client Name" fullWidth value={client.client_name || ''} onChange={handleChange('client_name')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Status</InputLabel>
+                  <Select value={client.status || ''} onChange={handleChange('status')} disabled={!editMode}>
+                    <MenuItem value="Active">Active</MenuItem>
+                    <MenuItem value="Inactive">Inactive</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Client Status" fullWidth value={client.client_status || ''} onChange={handleChange('client_status')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Incorporation Date" type="date" fullWidth value={client.incorporation_date || ''} onChange={handleChange('incorporation_date')} disabled={!editMode} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Company Form" fullWidth value={client.company_form || ''} onChange={handleChange('company_form')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Industry" fullWidth value={client.industry || ''} onChange={handleChange('industry')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField label="Business Purpose" fullWidth value={client.business_purpose || ''} onChange={handleChange('business_purpose')} disabled={!editMode} multiline />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Number of Employees" fullWidth value={client.num_employees || ''} onChange={handleChange('num_employees')} disabled={!editMode} type="number" />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Annual Revenue" fullWidth value={client.annual_revenue || ''} onChange={handleChange('annual_revenue')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Home Country" fullWidth value={client.home_country || ''} onChange={handleChange('home_country')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Managing Director" fullWidth value={client.managing_director || ''} onChange={handleChange('managing_director')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Phone" fullWidth value={client.phone || ''} onChange={handleChange('phone')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Fax" fullWidth value={client.fax || ''} onChange={handleChange('fax')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Email" fullWidth value={client.email || ''} onChange={handleChange('email')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Website" fullWidth value={client.website || ''} onChange={handleChange('website')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField label="Remarks" fullWidth value={client.remarks || ''} onChange={handleChange('remarks')} disabled={!editMode} multiline />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Creation Date" type="date" fullWidth value={client.creation_date || ''} onChange={handleChange('creation_date')} disabled={!editMode} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Service Limited" fullWidth value={client.service_limited || ''} onChange={handleChange('service_limited')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Nanonets" fullWidth value={client.nanonets || ''} onChange={handleChange('nanonets')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Account No" fullWidth value={client.account_no || ''} onChange={handleChange('account_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Internal CRM No" fullWidth value={client.internal_crm_no || ''} onChange={handleChange('internal_crm_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Internal Accounting No" fullWidth value={client.internal_accounting_no || ''} onChange={handleChange('internal_accounting_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Internal Payroll No" fullWidth value={client.internal_payroll_no || ''} onChange={handleChange('internal_payroll_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Internal Revenue Tax Account" fullWidth value={client.internal_revenue_tax_account || ''} onChange={handleChange('internal_revenue_tax_account')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Purchase Order No" fullWidth value={client.purchase_order_no || ''} onChange={handleChange('purchase_order_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Company Type" fullWidth value={client.company_type || ''} onChange={handleChange('company_type')} disabled={!editMode} />
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={1}>
+        <Card>
+          <CardContent>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField label="Street" fullWidth value={client.address_street || ''} onChange={handleChange('address_street')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Locality" fullWidth value={client.address_locality || ''} onChange={handleChange('address_locality')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Region" fullWidth value={client.address_region || ''} onChange={handleChange('address_region')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Postal Code" fullWidth value={client.address_postal_code || ''} onChange={handleChange('address_postal_code')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Country" fullWidth value={client.address_country || ''} onChange={handleChange('address_country')} disabled={!editMode} />
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={2}>
+        <Card>
+          <CardContent>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Bank Name" fullWidth value={client.bank_name || ''} onChange={handleChange('bank_name')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Bank Code" fullWidth value={client.bank_code || ''} onChange={handleChange('bank_code')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Bank Account No" fullWidth value={client.bank_account_no || ''} onChange={handleChange('bank_account_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="IBAN" fullWidth value={client.iban || ''} onChange={handleChange('iban')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="SWIFT Code" fullWidth value={client.swift_code || ''} onChange={handleChange('swift_code')} disabled={!editMode} />
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={3}>
+        <Card>
+          <CardContent>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Tax Authority" fullWidth value={client.tax_authority || ''} onChange={handleChange('tax_authority')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Tax Office Bank Name" fullWidth value={client.tax_office_bank_name || ''} onChange={handleChange('tax_office_bank_name')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Tax Office IBAN" fullWidth value={client.tax_office_iban || ''} onChange={handleChange('tax_office_iban')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Tax Office Bank SWIFT" fullWidth value={client.tax_office_bank_swift || ''} onChange={handleChange('tax_office_bank_swift')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField label="Tax Office Bank Address" fullWidth value={client.tax_office_bank_address || ''} onChange={handleChange('tax_office_bank_address')} disabled={!editMode} multiline />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Tax Office Contact" fullWidth value={client.tax_office_contact || ''} onChange={handleChange('tax_office_contact')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Tax Office Contact Phone" fullWidth value={client.tax_office_contact_phone || ''} onChange={handleChange('tax_office_contact_phone')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Elster" fullWidth value={client.elster || ''} onChange={handleChange('elster')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Direct Debit SEPA" fullWidth value={client.direct_debit_sepa || ''} onChange={handleChange('direct_debit_sepa')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Fiscal Year Start Date" type="date" fullWidth value={client.fiscal_year_start_date || ''} onChange={handleChange('fiscal_year_start_date')} disabled={!editMode} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="VAT ID" fullWidth value={client.vat_id || ''} onChange={handleChange('vat_id')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Operations No" fullWidth value={client.operations_no || ''} onChange={handleChange('operations_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Tax No" fullWidth value={client.tax_no || ''} onChange={handleChange('tax_no')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Payroll Tax No" fullWidth value={client.payroll_tax_no || ''} onChange={handleChange('payroll_tax_no')} disabled={!editMode} />
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={4}>
+        <Card>
+          <CardContent>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Register Authority" fullWidth value={client.register_authority || ''} onChange={handleChange('register_authority')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Register ID" fullWidth value={client.register_id || ''} onChange={handleChange('register_id')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Accident Insurance Name" fullWidth value={client.accident_insurance_name || ''} onChange={handleChange('accident_insurance_name')} disabled={!editMode} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Accident Insurance No" fullWidth value={client.accident_insurance_no || ''} onChange={handleChange('accident_insurance_no')} disabled={!editMode} />
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      </TabPanel>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+        <Button variant="outlined" onClick={() => navigate('/clients')}>
+          Back
+        </Button>
       </Box>
     </Box>
   );

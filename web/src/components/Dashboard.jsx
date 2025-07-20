@@ -1,46 +1,24 @@
 // src/components/Dashboard.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Typography, Container, Box, Button, Grid } from '@mui/material';
-import jwtDecode from 'jwt-decode';
-import api from '../services/api';
+import { Typography, Container, Box, Button } from '@mui/material';
+import { useUser } from '../context/UserContext';
 
 const Dashboard = () => {
-  const [services, setServices] = useState([]);
   const [displayName, setDisplayName] = useState('');
   const navigate = useNavigate();
+  const { user, refreshUser } = useUser();
 
   useEffect(() => {
-    const fetchData = async () => {
-      const token = localStorage.getItem('token');
-      console.log('Token in Dashboard:', token);
-      if (!token) {
-        console.log('No token found, redirecting to login');
-        navigate('/login', { replace: true });
-        return;
-      }
-      try {
-        const decoded = jwtDecode(token);
-        console.log('Decoded JWT:', decoded);
-        setDisplayName(decoded.name || decoded.username.split('@')[0]);
-        const response = await api.get('/api/serviceitems', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Service items response:', response.data);
-        setServices(Array.isArray(response.data) ? response.data : []);
-      } catch (error) {
-        console.error('Fetch services error:', error);
-        setServices([]);
-        localStorage.removeItem('token');
-        navigate('/login', { replace: true });
-      }
-    };
-    fetchData();
-  }, [navigate]);
+    if (user) {
+      setDisplayName(user.name || (user.username ? user.username.split('@')[0] : 'User'));
+    }
+  }, [user]);
 
   const handleLogout = () => {
     console.log('Dashboard logout triggered');
     localStorage.removeItem('token');
+    refreshUser();
     navigate('/login', { replace: true });
   };
 
@@ -59,33 +37,6 @@ const Dashboard = () => {
             Logout
           </Button>
         </Box>
-        <Typography variant="h6" gutterBottom>
-          Service Items
-        </Typography>
-        {services.length === 0 ? (
-          <Typography>No service items available</Typography>
-        ) : (
-          <Grid container spacing={2}>
-            {services.map((service) => (
-              <Grid item xs={12} sm={6} md={4} key={service.uid}>
-                <Box
-                  className="glass-effect"
-                  sx={{
-                    p: 2,
-                    '&:hover': { boxShadow: '0 6px 40px rgba(0, 0, 0, 0.15)' },
-                  }}
-                >
-                  <Typography variant="subtitle1" fontWeight="bold">
-                    {service.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {service.detail_description}
-                  </Typography>
-                </Box>
-              </Grid>
-            ))}
-          </Grid>
-        )}
       </Box>
     </Container>
   );

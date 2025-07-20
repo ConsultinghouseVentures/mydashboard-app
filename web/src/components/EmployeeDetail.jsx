@@ -1,14 +1,12 @@
-// src/components/Profile.jsx
+// src/components/EmployeeDetail.jsx
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Formik, Form, Field } from 'formik';
-import * as Yup from 'yup';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
   Box,
   Button,
   TextField,
-  Avatar,
+  IconButton,
   Paper,
   Grid,
   MenuItem,
@@ -20,13 +18,13 @@ import {
   Divider,
   useTheme,
   useMediaQuery,
-  IconButton,
+  CircularProgress,
 } from '@mui/material';
 import { ArrowBack, Edit, Save } from '@mui/icons-material';
 import api from '../services/api';
 import { useSnackbar } from '../context/SnackbarContext';
-import { useUser } from '../context/UserContext';
 import { countries } from '../constants/countries';
+import { USER_ROLES } from '../constants/roles';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -52,109 +50,94 @@ const usStates = [
   'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'
 ];
 
-const PasswordSchema = Yup.object().shape({
-  password: Yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
-  confirmPassword: Yup.string()
-    .oneOf([Yup.ref('password'), null], 'Passwords must match')
-    .required('Confirm Password is required'),
-});
-
-const Profile = () => {
+const EmployeeDetail = () => {
+  const { uid } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { showSnackbar } = useSnackbar();
-  const { user, refreshUser } = useUser();
+  const [employee, setEmployee] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [tabValue, setTabValue] = useState(0);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [profileData, setProfileData] = useState(null);
 
-  // Listen for sidebar collapse state
   useEffect(() => {
-    const handleSidebarToggle = () => {
-      setIsSidebarCollapsed(localStorage.getItem('sidebarCollapsed') === 'true');
-    };
-    window.addEventListener('sidebarToggle', handleSidebarToggle);
-    return () => window.removeEventListener('sidebarToggle', handleSidebarToggle);
-  }, []);
-
-  // Fetch profile data
-  useEffect(() => {
-    const fetchUser = async () => {
+    const fetchEmployee = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
         navigate('/login', { replace: true });
         return;
       }
       try {
-        const response = await api.getProfile({ headers: { Authorization: `Bearer ${token}` } });
-        setProfileData({
-          ...response,
-          email: response.email || response.username,
-          name: response.name || '',
-          role: response.role || 'user',
-        });
+        setLoading(true);
+        const employeeRes = await api.get(`/api/users/${uid}`, { headers: { Authorization: `Bearer ${token}` } });
+        setEmployee(employeeRes.data);
+        const clientsRes = await api.get('/api/clients', { headers: { Authorization: `Bearer ${token}` } });
+        setClients(clientsRes.data);
       } catch (err) {
-        console.error('Fetch profile error:', err);
+        console.error('Fetch employee error:', err);
         if (err.response?.status === 401) {
           localStorage.removeItem('token');
-          refreshUser();
           navigate('/login', { replace: true });
+        } else {
+          showSnackbar('Failed to fetch employee details', 'error');
         }
-        showSnackbar('Failed to load profile', 'error');
+      } finally {
+        setLoading(false);
       }
     };
-    fetchUser();
-  }, [navigate, refreshUser, showSnackbar]);
+    if (uid) {
+      fetchEmployee();
+    } else {
+      setLoading(false);
+      showSnackbar('Invalid employee ID', 'error');
+    }
+  }, [uid, navigate, showSnackbar]);
 
   const handleSave = async () => {
+    const token = localStorage.getItem('token');
     try {
-      const token = localStorage.getItem('token');
-      const response = await api.updateProfile(profileData, { headers: { Authorization: `Bearer ${token}` } });
-      localStorage.setItem('token', response.token);
-      refreshUser();
-      setProfileData({ ...response, email: response.email || response.username });
-      showSnackbar('Profile updated successfully', 'success');
+      const response = await api.put(`/api/users/${uid}`, employee, { headers: { Authorization: `Bearer ${token}` } });
+      setEmployee(response.data);
       setEditMode(false);
+      showSnackbar('Employee updated successfully', 'success');
     } catch (err) {
-      console.error('Error updating profile:', err);
-      showSnackbar('Profile not updated', 'error');
+      console.error('Update employee error:', err);
+      if (err.response?.status === 401) {
+        localStorage.removeItem('token');
+        navigate('/login', { replace: true });
+      } else {
+        showSnackbar('Failed to update employee', 'error');
+      }
     }
   };
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
-    setProfileData((prev) => ({ ...prev, [field]: value }));
+    setEmployee((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSelectChange = (field) => (event) => {
     const value = event.target.value;
-    setProfileData((prev) => ({ ...prev, [field]: value }));
+    setEmployee((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handlePasswordSubmit = async (values, { setSubmitting }) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await api.changePassword({ password: values.password }, { headers: { Authorization: `Bearer ${token}` } });
-      localStorage.setItem('token', response.token);
-      refreshUser();
-      showSnackbar('Password changed successfully', 'success');
-    } catch (err) {
-      console.error('Password change error:', err.response || err.message);
-      showSnackbar('Password not updated', 'error');
-      setSubmitting(false);
-    }
-  };
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
-  if (!user || !profileData) return null;
+  if (!employee) return null;
 
-  const isUS = profileData.country === 'United States of America (the)';
+  const isUS = employee.country === 'United States of America (the)';
 
   return (
     <Box
       sx={{
-        ml: { xs: 0, sm: isSidebarCollapsed ? '60px' : '240px' },
         p: 2,
         display: 'flex',
         justifyContent: 'center',
@@ -174,9 +157,9 @@ const Profile = () => {
           boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, justifyContent: 'space-between' }}>
           <Typography variant="h4" component="h1">
-            Profile
+            Employee: {employee.name || ''}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             {!editMode ? (
@@ -188,28 +171,20 @@ const Profile = () => {
                 Save
               </Button>
             )}
-            <IconButton onClick={() => navigate('/dashboard')}>
+            <IconButton onClick={() => navigate('/employees')}>
               <ArrowBack />
             </IconButton>
           </Box>
         </Box>
-
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
-          <Avatar
-            sx={{ width: 120, height: 120, fontSize: 48 }}
-            alt={profileData.name}
-            src="/placeholder-avatar.jpg"
-          >
-            {profileData.name.charAt(0)}
-          </Avatar>
-        </Box>
+        <Typography variant="subtitle1" sx={{ mb: 2, color: 'text.secondary' }}>
+          Client: {employee.client ? employee.client.name : 'None associated'}
+        </Typography>
 
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered variant={isMobile ? 'scrollable' : 'standard'}>
           <Tab label="Login" />
           <Tab label="Personal" />
           <Tab label="Payroll" />
           <Tab label="Bank" />
-          <Tab label="Security" />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
@@ -222,7 +197,7 @@ const Profile = () => {
               <TextField
                 label="Display Name"
                 fullWidth
-                value={profileData.name}
+                value={employee.name || ''}
                 onChange={handleChange('name')}
                 disabled={!editMode}
               />
@@ -232,18 +207,27 @@ const Profile = () => {
                 label="Email"
                 type="email"
                 fullWidth
-                value={profileData.email}
+                value={employee.email || ''}
                 onChange={handleChange('email')}
                 disabled={!editMode}
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                label="Role"
-                fullWidth
-                value={profileData.role}
-                disabled
-              />
+              <FormControl fullWidth>
+                <InputLabel>Role</InputLabel>
+                <Select
+                  value={employee.role || ''}
+                  label="Role"
+                  onChange={handleSelectChange('role')}
+                  disabled={!editMode}
+                >
+                  {USER_ROLES.map((role) => (
+                    <MenuItem key={role.value} value={role.value}>
+                      {role.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
           </Grid>
         </TabPanel>
@@ -258,7 +242,7 @@ const Profile = () => {
               <TextField
                 label="First Name"
                 fullWidth
-                value={profileData.first_name}
+                value={employee.first_name || ''}
                 onChange={handleChange('first_name')}
                 disabled={!editMode}
               />
@@ -267,7 +251,7 @@ const Profile = () => {
               <TextField
                 label="Last Name"
                 fullWidth
-                value={profileData.last_name}
+                value={employee.last_name || ''}
                 onChange={handleChange('last_name')}
                 disabled={!editMode}
               />
@@ -276,7 +260,7 @@ const Profile = () => {
               <TextField
                 label="Phone"
                 fullWidth
-                value={profileData.phone}
+                value={employee.phone || ''}
                 onChange={handleChange('phone')}
                 disabled={!editMode}
               />
@@ -285,7 +269,7 @@ const Profile = () => {
               <TextField
                 label="Website"
                 fullWidth
-                value={profileData.website}
+                value={employee.website || ''}
                 onChange={handleChange('website')}
                 disabled={!editMode}
               />
@@ -294,7 +278,7 @@ const Profile = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Academic Title</InputLabel>
                 <Select
-                  value={profileData.academic_title || ''}
+                  value={employee.academic_title || ''}
                   label="Academic Title"
                   onChange={handleSelectChange('academic_title')}
                   disabled={!editMode}
@@ -310,7 +294,7 @@ const Profile = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Salutation</InputLabel>
                 <Select
-                  value={profileData.salutation || ''}
+                  value={employee.salutation || ''}
                   label="Salutation"
                   onChange={handleSelectChange('salutation')}
                   disabled={!editMode}
@@ -327,7 +311,7 @@ const Profile = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Gender</InputLabel>
                 <Select
-                  value={profileData.gender || ''}
+                  value={employee.gender || ''}
                   label="Gender"
                   onChange={handleSelectChange('gender')}
                   disabled={!editMode}
@@ -349,7 +333,7 @@ const Profile = () => {
               <TextField
                 label="Street 1"
                 fullWidth
-                value={profileData.street1}
+                value={employee.street1 || ''}
                 onChange={handleChange('street1')}
                 disabled={!editMode}
               />
@@ -358,7 +342,7 @@ const Profile = () => {
               <TextField
                 label="Street 2"
                 fullWidth
-                value={profileData.street2}
+                value={employee.street2 || ''}
                 onChange={handleChange('street2')}
                 disabled={!editMode}
               />
@@ -367,7 +351,7 @@ const Profile = () => {
               <TextField
                 label="ZIP"
                 fullWidth
-                value={profileData.zip}
+                value={employee.zip || ''}
                 onChange={handleChange('zip')}
                 disabled={!editMode}
               />
@@ -376,7 +360,7 @@ const Profile = () => {
               <TextField
                 label="City"
                 fullWidth
-                value={profileData.city}
+                value={employee.city || ''}
                 onChange={handleChange('city')}
                 disabled={!editMode}
               />
@@ -386,7 +370,7 @@ const Profile = () => {
                 <FormControl fullWidth>
                   <InputLabel shrink>State</InputLabel>
                   <Select
-                    value={profileData.state || ''}
+                    value={employee.state || ''}
                     label="State"
                     onChange={handleSelectChange('state')}
                     disabled={!editMode}
@@ -403,7 +387,7 @@ const Profile = () => {
                 <TextField
                   label="State"
                   fullWidth
-                  value={profileData.state}
+                  value={employee.state || ''}
                   onChange={handleChange('state')}
                   disabled={!editMode}
                 />
@@ -413,7 +397,7 @@ const Profile = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Country</InputLabel>
                 <Select
-                  value={profileData.country || ''}
+                  value={employee.country || ''}
                   label="Country"
                   onChange={handleSelectChange('country')}
                   disabled={!editMode}
@@ -442,7 +426,7 @@ const Profile = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={profileData.employment_start}
+                value={employee.employment_start || ''}
                 onChange={handleChange('employment_start')}
                 disabled={!editMode}
               />
@@ -453,7 +437,7 @@ const Profile = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={profileData.employment_end}
+                value={employee.employment_end || ''}
                 onChange={handleChange('employment_end')}
                 disabled={!editMode}
               />
@@ -462,7 +446,7 @@ const Profile = () => {
               <TextField
                 label="Religion"
                 fullWidth
-                value={profileData.religion}
+                value={employee.religion || ''}
                 onChange={handleChange('religion')}
                 disabled={!editMode}
               />
@@ -471,7 +455,7 @@ const Profile = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Marital Status</InputLabel>
                 <Select
-                  value={profileData.marital_status || ''}
+                  value={employee.marital_status || ''}
                   label="Marital Status"
                   onChange={handleSelectChange('marital_status')}
                   disabled={!editMode}
@@ -488,7 +472,7 @@ const Profile = () => {
               <TextField
                 label="Education"
                 fullWidth
-                value={profileData.education}
+                value={employee.education || ''}
                 onChange={handleChange('education')}
                 disabled={!editMode}
               />
@@ -499,7 +483,7 @@ const Profile = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={profileData.date_of_birth}
+                value={employee.date_of_birth || ''}
                 onChange={handleChange('date_of_birth')}
                 disabled={!editMode}
               />
@@ -508,7 +492,7 @@ const Profile = () => {
               <TextField
                 label="Place of Birth"
                 fullWidth
-                value={profileData.place_of_birth}
+                value={employee.place_of_birth || ''}
                 onChange={handleChange('place_of_birth')}
                 disabled={!editMode}
               />
@@ -517,7 +501,7 @@ const Profile = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Country of Birth</InputLabel>
                 <Select
-                  value={profileData.country_of_birth || ''}
+                  value={employee.country_of_birth || ''}
                   label="Country of Birth"
                   onChange={handleSelectChange('country_of_birth')}
                   disabled={!editMode}
@@ -535,7 +519,7 @@ const Profile = () => {
               <TextField
                 label="Birth Name"
                 fullWidth
-                value={profileData.birth_name}
+                value={employee.birth_name || ''}
                 onChange={handleChange('birth_name')}
                 disabled={!editMode}
               />
@@ -544,7 +528,7 @@ const Profile = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Citizenship</InputLabel>
                 <Select
-                  value={profileData.citizenship || ''}
+                  value={employee.citizenship || ''}
                   label="Citizenship"
                   onChange={handleSelectChange('citizenship')}
                   disabled={!editMode}
@@ -562,10 +546,29 @@ const Profile = () => {
               <TextField
                 label="Place of Residence"
                 fullWidth
-                value={profileData.place_of_residence}
+                value={employee.place_of_residence || ''}
                 onChange={handleChange('place_of_residence')}
                 disabled={!editMode}
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel shrink>Employer</InputLabel>
+                <Select
+                  value={employee.client_id || ''}
+                  label="Employer"
+                  onChange={handleSelectChange('client_id')}
+                  disabled={!editMode}
+                  notched
+                >
+                  <MenuItem value="">None</MenuItem>
+                  {clients.map((client) => (
+                    <MenuItem key={client.id} value={client.id}>
+                      {client.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
           </Grid>
         </TabPanel>
@@ -580,7 +583,7 @@ const Profile = () => {
               <TextField
                 label="Bank Name"
                 fullWidth
-                value={profileData.bank_name}
+                value={employee.bank_name || ''}
                 onChange={handleChange('bank_name')}
                 disabled={!editMode}
               />
@@ -589,7 +592,7 @@ const Profile = () => {
               <TextField
                 label="Bank Code No."
                 fullWidth
-                value={profileData.bank_code_no}
+                value={employee.bank_code_no || ''}
                 onChange={handleChange('bank_code_no')}
                 disabled={!editMode}
               />
@@ -598,7 +601,7 @@ const Profile = () => {
               <TextField
                 label="Bank Account No."
                 fullWidth
-                value={profileData.bank_account_no}
+                value={employee.bank_account_no || ''}
                 onChange={handleChange('bank_account_no')}
                 disabled={!editMode}
               />
@@ -607,7 +610,7 @@ const Profile = () => {
               <TextField
                 label="IBAN"
                 fullWidth
-                value={profileData.iban}
+                value={employee.iban || ''}
                 onChange={handleChange('iban')}
                 disabled={!editMode}
               />
@@ -616,67 +619,21 @@ const Profile = () => {
               <TextField
                 label="SWIFT/BIC"
                 fullWidth
-                value={profileData.swift_bic}
+                value={employee.swift_bic || ''}
                 onChange={handleChange('swift_bic')}
                 disabled={!editMode}
               />
             </Grid>
           </Grid>
         </TabPanel>
-
-        <TabPanel value={tabValue} index={4}>
-          <Typography variant="h6" gutterBottom>
-            Change Password
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          <Formik
-            initialValues={{ password: '', confirmPassword: '' }}
-            validationSchema={PasswordSchema}
-            onSubmit={handlePasswordSubmit}
-          >
-            {({ errors, touched, isSubmitting }) => (
-              <Form>
-                <Grid container spacing={3}>
-                  <Grid item xs={12}>
-                    <Field
-                      as={TextField}
-                      name="password"
-                      label="New Password"
-                      type="password"
-                      fullWidth
-                      error={touched.password && !!errors.password}
-                      helperText={touched.password && errors.password}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Field
-                      as={TextField}
-                      name="confirmPassword"
-                      label="Confirm New Password"
-                      type="password"
-                      fullWidth
-                      error={touched.confirmPassword && !!errors.confirmPassword}
-                      helperText={touched.confirmPassword && errors.confirmPassword}
-                    />
-                  </Grid>
-                </Grid>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  fullWidth
-                  sx={{ mt: 3 }}
-                  disabled={isSubmitting}
-                >
-                  Change Password
-                </Button>
-              </Form>
-            )}
-          </Formik>
-        </TabPanel>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+          <Button variant="outlined" onClick={() => navigate('/employees')}>
+            Back
+          </Button>
+        </Box>
       </Paper>
     </Box>
   );
 };
 
-export default Profile;
+export default EmployeeDetail;

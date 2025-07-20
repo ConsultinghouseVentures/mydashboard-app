@@ -10,8 +10,9 @@ import { useSnackbar } from '../context/SnackbarContext.jsx';
 
 const RegisterSchema = Yup.object().shape({
   email: Yup.string().email('Must be a valid email').required('Email is required'),
+  first_name: Yup.string().required('First Name is required'),
+  last_name: Yup.string().required('Last Name is required'),
   password: Yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
-  name: Yup.string().required('Name is required'),
 });
 
 const Register = () => {
@@ -21,7 +22,7 @@ const Register = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      const response = await api.register(values.email, values.password, values.name);
+      const response = await api.register(values.email, values.password, values.first_name, values.last_name);
       console.log('Register response:', response);
       localStorage.setItem('token', response.token);
       console.log('Token set:', response.token);
@@ -49,21 +50,12 @@ const Register = () => {
         </Typography>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         <Formik
-          initialValues={{ email: '', password: '', name: '' }}
+          initialValues={{ email: '', first_name: '', last_name: '', password: '' }}
           validationSchema={RegisterSchema}
           onSubmit={handleSubmit}
         >
           {({ errors, touched, isSubmitting }) => (
             <Form>
-              <Field
-                as={TextField}
-                name="name"
-                label="Name"
-                fullWidth
-                margin="normal"
-                error={touched.name && !!errors.name}
-                helperText={touched.name && errors.name}
-              />
               <Field
                 as={TextField}
                 name="email"
@@ -73,6 +65,24 @@ const Register = () => {
                 margin="normal"
                 error={touched.email && !!errors.email}
                 helperText={touched.email && errors.email}
+              />
+              <Field
+                as={TextField}
+                name="first_name"
+                label="First Name"
+                fullWidth
+                margin="normal"
+                error={touched.first_name && !!errors.first_name}
+                helperText={touched.first_name && errors.first_name}
+              />
+              <Field
+                as={TextField}
+                name="last_name"
+                label="Last Name"
+                fullWidth
+                margin="normal"
+                error={touched.last_name && !!errors.last_name}
+                helperText={touched.last_name && errors.last_name}
               />
               <Field
                 as={TextField}

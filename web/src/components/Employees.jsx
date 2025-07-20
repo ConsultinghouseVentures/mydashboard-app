@@ -1,6 +1,6 @@
-// src/components/Clients.jsx
-import React, { useEffect, useState, useContext } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+// src/components/Employees.jsx
+import React, { useEffect, useState, useContext, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LayoutTableOverview, LayoutContext } from './Layout_TableOverview.jsx';
 import {
   Typography,
@@ -13,7 +13,12 @@ import {
   List,
   ListItem,
   ListItemText,
-  CircularProgress, // Added for loading state
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  CircularProgress,
 } from '@mui/material';
 import { FilterAlt as FilterIcon, Add as AddIcon } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -21,10 +26,11 @@ import api from '../services/api';
 import TableFilterDialog, { applyFilterRules } from './TableFilterDialog';
 import SearchBox from './SearchBox';
 import SavedViews from './SavedViews';
-import LayoutLightbox from './Layout_Lightbox.jsx';
+import LayoutLightbox from './Layout_Lightbox';
 import TableLightbox from './TableLightbox';
 import { useSnackbar } from '../context/SnackbarContext';
-import { useUser } from '../context/UserContext'; // Added import for user context
+import { useUser } from '../context/UserContext';
+import { useUserRoles } from '../constants/roles';
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -51,25 +57,38 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const Clients = () => {
+const Employees = () => {
   const { dialogStyle, lightboxStyles, tableStyles, isSidebarCollapsed } = useContext(LayoutContext) || {};
   const { showSnackbar } = useSnackbar();
+  const { user } = useUser();
   const navigate = useNavigate();
-  const { user } = useUser(); // Added to define user
+  const { roles: roleList, loading: rolesLoading, error: rolesError } = useUserRoles(); // Destructure to fix TypeError
+  const [employees, setEmployees] = useState([]);
   const [clients, setClients] = useState([]);
+  const [permissions, setPermissions] = useState({ employees: { access: {} } });
   const [filter, setFilter] = useState('');
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true); // Added loading state
-  const [savedViews, setSavedViews] = useState(() => JSON.parse(localStorage.getItem('clientViews')) || []);
+  const [savedViews, setSavedViews] = useState(() => JSON.parse(localStorage.getItem('employeeViews')) || []);
   const [selectedView, setSelectedView] = useState('');
   const [openColumnDialog, setOpenColumnDialog] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [lightboxMode, setLightboxMode] = useState('view');
-  const [permissions, setPermissions] = useState({ clients: { access: {} } }); // Added permissions state
+  const [openAddDialog, setOpenAddDialog] = useState(false);
+  const [addFormData, setAddFormData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    password: '',
+    status: 'Active',
+    role: 'Employee',
+    client_id: '',
+  });
+  const [addLoading, setAddLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Added loading state for data fetch
   const [columnsConfig, setColumnsConfig] = useState([
     {
-      field: 'client_name',
-      headerName: 'Client Name',
+      field: 'last_name',
+      headerName: 'Last Name',
       flex: 1,
       minWidth: 150,
       visible: true,
@@ -87,7 +106,7 @@ const Clients = () => {
           }}
           onClick={(event) => {
             event.stopPropagation();
-            navigate(`/clients/${params.row.uid}`);
+            navigate(`/employees/${params.id}`);
           }}
         >
           {params?.value}
@@ -95,12 +114,68 @@ const Clients = () => {
       ),
     },
     {
+      field: 'first_name',
+      headerName: 'First Name',
+      flex: 1,
+      minWidth: 150,
+      visible: true,
+      renderCell: (params) => (
+        <Typography
+          component="span"
+          sx={{
+            cursor: 'pointer',
+            color: 'primary.main',
+            '&:hover': { textDecoration: 'underline' },
+            display: 'inline-block',
+            width: '100%',
+            height: '100%',
+            p: 0,
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            navigate(`/employees/${params.id}`);
+          }}
+        >
+          {params?.value}
+        </Typography>
+      ),
+    },
+    {
+      field: 'client_id',
+      headerName: 'Client',
+      flex: 1,
+      minWidth: 150,
+      visible: true,
+      editable: permissions.employees?.access[user?.role]?.['write:employees'] ?? false,
+      type: 'singleSelect',
+      valueOptions: () => clients.map(c => ({ value: c.uid, label: c.name })),
+      renderCell: (params) => params?.row?.client ? params.row.client.name : 'None',
+      valueGetter: (params) => params?.row?.client_id || null,
+    },
+    {
+      field: 'email',
+      headerName: 'Email',
+      flex: 1,
+      minWidth: 200,
+      visible: true,
+    },
+    {
+      field: 'role',
+      headerName: 'User Role',
+      flex: 1,
+      minWidth: 120,
+      visible: true,
+      editable: permissions.employees?.access[user?.role]?.['write:employees'] ?? false,
+      type: 'singleSelect',
+      valueOptions: () => roleList.map(role => role.value), // Made function for dynamic update after fetch
+    },
+    {
       field: 'status',
       headerName: 'Status',
       flex: 1,
       minWidth: 120,
       visible: true,
-      editable: permissions.clients?.access[user?.role]?.['edit_clients'] ?? false, // Updated to match DB permission name
+      editable: permissions.employees?.access[user?.role]?.['write:employees'] ?? false,
       type: 'singleSelect',
       valueOptions: ['Active', 'Inactive'],
     },
@@ -134,7 +209,7 @@ const Clients = () => {
             variant="outlined"
             onClick={(event) => {
               event.stopPropagation();
-              setSelectedClient(params.row);
+              setSelectedEmployee(params?.row);
               setLightboxMode('view');
             }}
           >
@@ -143,10 +218,10 @@ const Clients = () => {
           <Button
             size="small"
             variant="outlined"
-            disabled={!(permissions.clients?.access[user?.role]?.['edit_clients'] ?? false)} // Updated to match DB permission name
+            disabled={!(permissions.employees?.access[user?.role]?.['write:employees'] ?? false)}
             onClick={(event) => {
               event.stopPropagation();
-              setSelectedClient(params.row);
+              setSelectedEmployee(params?.row);
               setLightboxMode('edit');
             }}
           >
@@ -156,20 +231,21 @@ const Clients = () => {
       ),
     },
   ]);
+
   const [filterRules, setFilterRules] = useState(() => {
     try {
-      const rules = JSON.parse(localStorage.getItem('clientFilterRules')) || [];
+      const rules = JSON.parse(localStorage.getItem('employeeFilterRules')) || [];
       console.log('Initial filterRules from localStorage:', rules);
       return rules;
     } catch (e) {
-      console.error('Error parsing clientFilterRules from localStorage:', e);
+      console.error('Error parsing employeeFilterRules from localStorage:', e);
       return [];
     }
   });
   const [anchorEl, setAnchorEl] = useState(null);
   const [openViewsDialog, setOpenViewsDialog] = useState(false);
 
-  // Added fetch for permissions
+  // Fetch permissions to determine access
   useEffect(() => {
     const fetchPermissions = async () => {
       const token = localStorage.getItem('token');
@@ -182,44 +258,48 @@ const Clients = () => {
         const response = await api.get('/api/permissions/permissions-matrix', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setPermissions(response.moduleData);
+        setPermissions(response?.moduleData || { employees: { access: {} } }); // Fixed TypeError with optional chaining and default
       } catch (err) {
         console.error('Fetch permissions error:', err);
         setError('Failed to load permissions');
+        setPermissions({ employees: { access: {} } }); // Default on error
       }
     };
     fetchPermissions();
   }, [navigate]);
 
-  // Updated fetchClients with permission check to prevent 403
+  // Fetch employees and clients
   useEffect(() => {
-    const fetchClients = async () => {
+    const fetchData = async () => {
       const token = localStorage.getItem('token');
-      console.log('Clients fetch token:', token);
       if (!token) {
         console.log('No token, redirecting to login');
         navigate('/login', { replace: true });
         return;
       }
-      setLoading(true);
+      setLoading(true); // Start loading
       try {
-        const response = await api.get('/api/clients', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Clients API full response:', response);
-        // Handle case where response is the data array directly
-        const data = Array.isArray(response) ? response : Array.isArray(response.data) ? response.data : [];
-        console.log('Clients API response data:', data);
-        const formattedData = data.map((row) => ({
+        const [employeesResponse, clientsResponse] = await Promise.all([
+          api.get('/api/employees', { headers: { Authorization: `Bearer ${token}` } }),
+          api.get('/api/clients', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+
+        console.log('Employees API full response:', employeesResponse);
+        const employeesData = Array.isArray(employeesResponse.data) ? employeesResponse.data : [];
+        console.log('Employees API response data:', employeesData);
+        const formattedData = employeesData.map((row) => ({
           ...row,
           created_at: row.created_at ? new Date(row.created_at) : null,
           updated_at: row.updated_at ? new Date(row.updated_at) : null,
         }));
-        console.log('Setting clients:', formattedData);
-        setClients(formattedData);
+        console.log('Setting employees:', formattedData);
+        setEmployees(formattedData);
+
+        setClients(Array.isArray(clientsResponse.data) ? clientsResponse.data : []);
+
         setError(null);
       } catch (error) {
-        console.error('Fetch clients error:', {
+        console.error('Fetch data error:', {
           message: error.message,
           response: error.response
             ? {
@@ -228,30 +308,34 @@ const Clients = () => {
               }
             : 'No response data',
         });
-        setError(error.response?.data?.message || 'Failed to fetch clients');
+        if (error.response?.status === 403) {
+          setError('Permission denied to access employees');
+        } else {
+          setError(error.response?.data?.message || 'Failed to fetch data');
+        }
         if (error.response?.status === 401) {
           console.log('Unauthorized, redirecting to login');
           localStorage.removeItem('token');
           navigate('/login', { replace: true });
         }
       } finally {
-        setLoading(false);
+        setLoading(false); // End loading
       }
     };
-    if (permissions.clients?.access[user?.role]?.view_clients ?? true) { // Updated key to 'view_clients' based on DB
-      fetchClients();
+    if (permissions.employees?.access[user?.role]?.['read:employees'] === true) {
+      fetchData();
     } else {
-      setError('Permission denied to view clients');
+      setError('Permission denied to view employees');
       setLoading(false);
     }
-  }, [navigate, permissions, user?.role]); // Added dependencies for permission check
+  }, [navigate, user?.role, permissions]);
 
   useEffect(() => {
-    localStorage.setItem('clientViews', JSON.stringify(savedViews));
+    localStorage.setItem('employeeViews', JSON.stringify(savedViews));
   }, [savedViews]);
 
   useEffect(() => {
-    localStorage.setItem('clientFilterRules', JSON.stringify(filterRules));
+    localStorage.setItem('employeeFilterRules', JSON.stringify(filterRules));
   }, [filterRules]);
 
   const handleColumnToggle = (field) => {
@@ -260,17 +344,21 @@ const Clients = () => {
     ));
   };
 
-  const getFilteredClients = () => {
-    const searchFilter = (client) => {
+  const getFilteredEmployees = useMemo(() => {
+    const searchFilter = (employee) => {
       if (!filter) return true;
       const search = filter.toLowerCase().trim();
       return (
-        client.client_name?.toLowerCase().includes(search) ||
-        client.status?.toLowerCase().includes(search)
+        employee.last_name?.toLowerCase().includes(search) ||
+        employee.first_name?.toLowerCase().includes(search) ||
+        employee.client?.name?.toLowerCase().includes(search) ||
+        employee.email?.toLowerCase().includes(search) ||
+        employee.role?.toLowerCase().includes(search) ||
+        employee.status?.toLowerCase().includes(search)
       );
     };
-    return applyFilterRules(clients, filterRules, searchFilter);
-  };
+    return applyFilterRules(employees, filterRules, searchFilter);
+  }, [employees, filterRules, filter]); // Memoized for performance
 
   const handleFilterClick = (event) => {
     if (anchorEl) {
@@ -304,78 +392,125 @@ const Clients = () => {
   };
 
   const handleSaveEdit = async (updatedData) => {
-    if (!(permissions.clients?.access[user?.role]?.edit_clients ?? false)) { // Updated key to 'edit_clients'
-      showSnackbar('Permission denied to edit clients', 'error');
+    if (!(permissions.employees?.access[user?.role]?.['write:employees'] ?? false)) {
+      showSnackbar('Permission denied to edit employees', 'error');
       return;
     }
     const token = localStorage.getItem('token');
     if (!token) {
       console.error('No token found');
+      showSnackbar('No authentication token found', 'error');
       return;
     }
     try {
       console.log('Saving data:', updatedData);
-      const response = await api.put(`/api/clients/${updatedData.uid}`, updatedData, {
+      const response = await api.put(`/api/employees/${updatedData.uid}`, updatedData, {
         headers: { Authorization: `Bearer ${token}` },
       });
       console.log('API response:', response);
-      const newData = response; // Assuming response contains the updated object
-      setClients((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
-      setSelectedClient(null); // Close the lightbox after save
-      return newData; // Return updated data for lightbox
+      const newData = response.data;
+      if (!newData || !newData.uid) {
+        throw new Error('Invalid response data');
+      }
+      setEmployees((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
+      setSelectedEmployee(null);
+      showSnackbar('Employee updated successfully', 'success');
+      return newData;
     } catch (err) {
       console.error('Update error:', err);
-      throw err; // Propagate error to lightbox
+      showSnackbar(err.response?.data?.message || 'Failed to update employee', 'error');
+      throw err;
     }
   };
 
   const handleCellEditCommit = async (params) => {
-    if (!(permissions.clients?.access[user?.role]?.edit_clients ?? false)) { // Updated key to 'edit_clients'
-      showSnackbar('Permission denied to edit clients', 'error');
-      return params.value; // Revert
+    if (!(permissions.employees?.access[user?.role]?.['write:employees'] ?? false)) {
+      showSnackbar('Permission denied to edit employees', 'error');
+      return params.value; // Return original value
     }
     const { id, field, value } = params;
-    const updatedClient = clients.find((client) => client.uid === id);
-    if (updatedClient && field === 'status') {
-      const updatedData = { ...updatedClient, [field]: value };
+    const updatedEmployee = employees.find((employee) => employee.uid === id);
+    if (updatedEmployee) {
+      const updatedData = { ...updatedEmployee, [field]: value };
       try {
         const token = localStorage.getItem('token');
-        const response = await api.put(`/api/clients/${id}`, updatedData, {
+        const response = await api.put(`/api/employees/${id}`, updatedData, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const newData = response;
-        setClients((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
+        const newData = response.data;
+        setEmployees((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
+        showSnackbar('Employee updated successfully', 'success');
+        return value; // Return new value
       } catch (err) {
         console.error('Inline edit error:', err);
-        // Revert to original value on failure
-        setClients((prev) => prev.map((c) => (c.uid === id ? { ...c, status: updatedClient.status } : c)));
+        showSnackbar(err.response?.data?.message || 'Failed to update employee', 'error');
+        return updatedEmployee[field]; // Revert to old value
       }
     }
+    return params.value;
   };
 
-  const processRowUpdate = (newRow, oldRow) => {
-    const updatedRow = { ...newRow };
-    if (newRow.status !== oldRow.status) {
-      handleCellEditCommit({ id: newRow.uid, field: 'status', value: newRow.status });
-    }
-    return updatedRow;
-  };
+  // Removed processRowUpdate as editMode is 'cell', not 'row'
+  // Updated to use onCellEditStop or similar if needed, but onCellEditCommit handles it
 
-  const handleNewClient = () => {
-    if (!(permissions.clients?.access[user?.role]?.add_clients ?? false)) { // Assuming 'add_clients' permission
-      showSnackbar('Permission denied to add clients', 'error');
+  const handleNewEmployee = () => {
+    if (!(permissions.employees?.access[user?.role]?.['add:employees'] ?? false)) {
+      showSnackbar('Permission denied to add employees', 'error');
       return;
     }
-    console.log('New client button clicked');
-    // Placeholder for future implementation (e.g., navigate to new client form)
+    setOpenAddDialog(true);
   };
 
-  const filteredClients = getFilteredClients();
+  const handleAddChange = (event) => {
+    const { name, value } = event.target;
+    setAddFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-  console.log('Clients state:', clients);
+  const handleAddSubmit = async () => {
+    if (!(permissions.employees?.access[user?.role]?.['add:employees'] ?? false)) {
+      showSnackbar('Permission denied to add employees', 'error');
+      return;
+    }
+    // Basic validation
+    if (!addFormData.first_name || !addFormData.last_name || !addFormData.email || !addFormData.password) {
+      showSnackbar('Missing required fields: First Name, Last Name, Email, Password', 'error');
+      return;
+    }
+    // Simple email validation
+    if (!/\S+@\S+\.\S+/.test(addFormData.email)) {
+      showSnackbar('Invalid email format', 'error');
+      return;
+    }
+    setAddLoading(true);
+    const token = localStorage.getItem('token');
+    try {
+      const response = await api.post('/api/employees', addFormData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showSnackbar('Employee added successfully', 'success');
+      setEmployees((prev) => [...prev, response.data]);
+      setOpenAddDialog(false);
+      setAddFormData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        password: '',
+        status: 'Active',
+        role: 'Employee',
+        client_id: '',
+      });
+    } catch (err) {
+      console.error('Add employee error:', err);
+      showSnackbar(err.response?.data?.message || 'Failed to add employee', 'error');
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
+  console.log('Employees state:', employees);
   console.log('Filter:', filter);
   console.log('Filter rules:', filterRules);
-  console.log('Filtered clients:', filteredClients);
+  console.log('Filtered employees:', getFilteredEmployees);
 
   return (
     <LayoutTableOverview showBackTop={true} showBackBottom={true}>
@@ -406,7 +541,7 @@ const Clients = () => {
           <Box sx={{ position: 'relative', minWidth: '800px' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 8, maxWidth: '100%', minWidth: '800px' }}>
               <Typography variant="h4" component="h1" sx={{ ml: 0, textAlign: 'left' }}>
-                Clients
+                Employees
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end', textAlign: 'right', maxWidth: '100%' }}>
                 <SearchBox value={filter} onChange={setFilter} onClear={setFilter} />
@@ -414,9 +549,10 @@ const Clients = () => {
                   variant="outlined"
                   size="small"
                   startIcon={<AddIcon />}
-                  onClick={handleNewClient}
+                  onClick={handleNewEmployee}
+                  disabled={!(permissions.employees?.access[user?.role]?.['add:employees'] ?? false)}
                 >
-                  New Client
+                  New Employee
                 </Button>
               </Box>
             </Box>
@@ -445,21 +581,20 @@ const Clients = () => {
                 {error}
               </Typography>
             )}
-            <Box sx={{ height: 400, width: '100%' }}>  {/* Set height and width for Data Grid */}
-              {loading ? ( // Added loading indicator
+            <Box sx={{ height: 400, width: '100%', overflowX: 'auto', maxWidth: '100%', minWidth: '800px', boxSizing: 'border-box' }}> {/* Fixed Data Grid height warning by setting explicit height on parent Box */}
+              {loading ? (
                 <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} />
               ) : (
                 <DataGrid
-                  rows={filteredClients}
-                  columns={columnsConfig.filter((col) => col.visible)} // Only display visible columns
+                  rows={getFilteredEmployees}
+                  columns={columnsConfig.filter((col) => col.visible)}
                   getRowId={(row) => row.uid}
+                  autoHeight
                   pageSizeOptions={[5, 10, 20, 100]}
                   onCellEditCommit={handleCellEditCommit}
-                  processRowUpdate={processRowUpdate}
                   editMode="cell"
-                  experimentalFeatures={{ newEditingApi: true }}
                   sx={{
-                    width: '100%',  // Ensure full width
+                    width: '100%',
                     ...tableStyles,
                     '& .MuiDataGrid-row': {
                       position: 'relative',
@@ -510,18 +645,89 @@ const Clients = () => {
           </ErrorBoundary>
           <ErrorBoundary>
             <TableLightbox
-              open={!!selectedClient}
+              open={!!selectedEmployee}
               mode={lightboxMode}
-              data={selectedClient}
+              data={selectedEmployee}
               columnsConfig={columnsConfig}
-              onClose={() => setSelectedClient(null)}
+              onClose={() => setSelectedEmployee(null)}
               onSave={handleSaveEdit}
             />
           </ErrorBoundary>
         </Box>
       </Box>
+      <LayoutLightbox open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
+        <DialogTitle sx={lightboxStyles ? lightboxStyles.title : { p: 1, fontSize: '1rem' }}>
+          Add New Employee
+        </DialogTitle>
+        <DialogContent sx={lightboxStyles ? lightboxStyles.content : { p: 1 }}>
+          <TextField
+            label="First Name"
+            name="first_name"
+            value={addFormData.first_name}
+            onChange={handleAddChange}
+            fullWidth
+            margin="normal"
+            required
+          />
+          <TextField
+            label="Last Name"
+            name="last_name"
+            value={addFormData.last_name}
+            onChange={handleAddChange}
+            fullWidth
+            margin="normal"
+            required
+          />
+          <TextField
+            label="Email"
+            name="email"
+            value={addFormData.email}
+            onChange={handleAddChange}
+            fullWidth
+            margin="normal"
+            required
+            type="email"
+          />
+          <TextField
+            label="Password"
+            name="password"
+            type="password"
+            value={addFormData.password}
+            onChange={handleAddChange}
+            fullWidth
+            margin="normal"
+            required
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Status</InputLabel>
+            <Select name="status" value={addFormData.status} onChange={handleAddChange}>
+              <MenuItem value="Active">Active</MenuItem>
+              <MenuItem value="Inactive">Inactive</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Client</InputLabel>
+            <Select name="client_id" value={addFormData.client_id} onChange={handleAddChange}>
+              <MenuItem value="">None</MenuItem>
+              {clients.map((client) => (
+                <MenuItem key={client.uid} value={client.uid}>
+                  {client.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={lightboxStyles ? lightboxStyles.actions : { p: 1 }}>
+          <Button size="small" onClick={() => setOpenAddDialog(false)}>
+            Cancel
+          </Button>
+          <Button size="small" onClick={handleAddSubmit} disabled={addLoading}>
+            {addLoading ? <CircularProgress size={24} /> : 'Save'}
+          </Button>
+        </DialogActions>
+      </LayoutLightbox>
     </LayoutTableOverview>
   );
 };
 
-export default Clients;
+export default Employees;
