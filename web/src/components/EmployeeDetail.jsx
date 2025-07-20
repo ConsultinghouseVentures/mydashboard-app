@@ -24,7 +24,7 @@ import { ArrowBack, Edit, Save } from '@mui/icons-material';
 import api from '../services/api';
 import { useSnackbar } from '../context/SnackbarContext';
 import { countries } from '../constants/countries';
-import { USER_ROLES } from '../constants/roles';
+import { useUserRoles } from '../constants/roles'; // Updated to use hook for dynamic roles
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -56,9 +56,10 @@ const EmployeeDetail = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { showSnackbar } = useSnackbar();
-  const [employee, setEmployee] = useState(null);
-  const [clients, setClients] = useState([]);
+  const { roles: USER_ROLES, loading: rolesLoading, error: rolesError } = useUserRoles(); // Use hook for dynamic roles
+  const [employeeData, setEmployeeData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
   const [editMode, setEditMode] = useState(false);
 
@@ -71,12 +72,11 @@ const EmployeeDetail = () => {
       }
       try {
         setLoading(true);
-        const employeeRes = await api.get(`/api/users/${uid}`, { headers: { Authorization: `Bearer ${token}` } });
-        setEmployee(employeeRes.data);
-        const clientsRes = await api.get('/api/clients', { headers: { Authorization: `Bearer ${token}` } });
-        setClients(clientsRes.data);
+        const response = await api.get(`/api/employees/${uid}`, { headers: { Authorization: `Bearer ${token}` } });
+        setEmployeeData(response.data || response); // Handle if response is data or wrapped
       } catch (err) {
         console.error('Fetch employee error:', err);
+        setError(err.response?.data?.message || 'Failed to fetch employee details');
         if (err.response?.status === 401) {
           localStorage.removeItem('token');
           navigate('/login', { replace: true });
@@ -87,19 +87,14 @@ const EmployeeDetail = () => {
         setLoading(false);
       }
     };
-    if (uid) {
-      fetchEmployee();
-    } else {
-      setLoading(false);
-      showSnackbar('Invalid employee ID', 'error');
-    }
+    fetchEmployee();
   }, [uid, navigate, showSnackbar]);
 
   const handleSave = async () => {
     const token = localStorage.getItem('token');
     try {
-      const response = await api.put(`/api/users/${uid}`, employee, { headers: { Authorization: `Bearer ${token}` } });
-      setEmployee(response.data);
+      const response = await api.put(`/api/employees/${uid}`, employeeData, { headers: { Authorization: `Bearer ${token}` } });
+      setEmployeeData(response.data || response);
       setEditMode(false);
       showSnackbar('Employee updated successfully', 'success');
     } catch (err) {
@@ -115,15 +110,15 @@ const EmployeeDetail = () => {
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
-    setEmployee((prev) => ({ ...prev, [field]: value }));
+    setEmployeeData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSelectChange = (field) => (event) => {
     const value = event.target.value;
-    setEmployee((prev) => ({ ...prev, [field]: value }));
+    setEmployeeData((prev) => ({ ...prev, [field]: value }));
   };
 
-  if (loading) {
+  if (loading || rolesLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
         <CircularProgress />
@@ -131,9 +126,17 @@ const EmployeeDetail = () => {
     );
   }
 
-  if (!employee) return null;
+  if (error || rolesError) {
+    return (
+      <Box sx={{ p: 2, textAlign: 'center' }}>
+        <Typography color="error">{error || rolesError}</Typography>
+      </Box>
+    );
+  }
 
-  const isUS = employee.country === 'United States of America (the)';
+  if (!employeeData) return null;
+
+  const isUS = employeeData.country === 'United States of America (the)';
 
   return (
     <Box
@@ -157,9 +160,9 @@ const EmployeeDetail = () => {
           boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, justifyContent: 'space-between' }}>
           <Typography variant="h4" component="h1">
-            Employee: {employee.name || ''}
+            Employee: {employeeData.name || ''}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             {!editMode ? (
@@ -176,9 +179,6 @@ const EmployeeDetail = () => {
             </IconButton>
           </Box>
         </Box>
-        <Typography variant="subtitle1" sx={{ mb: 2, color: 'text.secondary' }}>
-          Client: {employee.client ? employee.client.name : 'None associated'}
-        </Typography>
 
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered variant={isMobile ? 'scrollable' : 'standard'}>
           <Tab label="Login" />
@@ -197,7 +197,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Display Name"
                 fullWidth
-                value={employee.name || ''}
+                value={employeeData.name || ''}
                 onChange={handleChange('name')}
                 disabled={!editMode}
               />
@@ -207,7 +207,7 @@ const EmployeeDetail = () => {
                 label="Email"
                 type="email"
                 fullWidth
-                value={employee.email || ''}
+                value={employeeData.email || ''}
                 onChange={handleChange('email')}
                 disabled={!editMode}
               />
@@ -216,7 +216,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel>Role</InputLabel>
                 <Select
-                  value={employee.role || ''}
+                  value={employeeData.role || ''}
                   label="Role"
                   onChange={handleSelectChange('role')}
                   disabled={!editMode}
@@ -242,7 +242,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="First Name"
                 fullWidth
-                value={employee.first_name || ''}
+                value={employeeData.first_name || ''}
                 onChange={handleChange('first_name')}
                 disabled={!editMode}
               />
@@ -251,7 +251,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Last Name"
                 fullWidth
-                value={employee.last_name || ''}
+                value={employeeData.last_name || ''}
                 onChange={handleChange('last_name')}
                 disabled={!editMode}
               />
@@ -260,7 +260,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Phone"
                 fullWidth
-                value={employee.phone || ''}
+                value={employeeData.phone || ''}
                 onChange={handleChange('phone')}
                 disabled={!editMode}
               />
@@ -269,7 +269,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Website"
                 fullWidth
-                value={employee.website || ''}
+                value={employeeData.website || ''}
                 onChange={handleChange('website')}
                 disabled={!editMode}
               />
@@ -278,7 +278,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Academic Title</InputLabel>
                 <Select
-                  value={employee.academic_title || ''}
+                  value={employeeData.academic_title || ''}
                   label="Academic Title"
                   onChange={handleSelectChange('academic_title')}
                   disabled={!editMode}
@@ -294,7 +294,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Salutation</InputLabel>
                 <Select
-                  value={employee.salutation || ''}
+                  value={employeeData.salutation || ''}
                   label="Salutation"
                   onChange={handleSelectChange('salutation')}
                   disabled={!editMode}
@@ -311,7 +311,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Gender</InputLabel>
                 <Select
-                  value={employee.gender || ''}
+                  value={employeeData.gender || ''}
                   label="Gender"
                   onChange={handleSelectChange('gender')}
                   disabled={!editMode}
@@ -333,7 +333,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Street 1"
                 fullWidth
-                value={employee.street1 || ''}
+                value={employeeData.street1 || ''}
                 onChange={handleChange('street1')}
                 disabled={!editMode}
               />
@@ -342,7 +342,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Street 2"
                 fullWidth
-                value={employee.street2 || ''}
+                value={employeeData.street2 || ''}
                 onChange={handleChange('street2')}
                 disabled={!editMode}
               />
@@ -351,7 +351,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="ZIP"
                 fullWidth
-                value={employee.zip || ''}
+                value={employeeData.zip || ''}
                 onChange={handleChange('zip')}
                 disabled={!editMode}
               />
@@ -360,7 +360,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="City"
                 fullWidth
-                value={employee.city || ''}
+                value={employeeData.city || ''}
                 onChange={handleChange('city')}
                 disabled={!editMode}
               />
@@ -370,7 +370,7 @@ const EmployeeDetail = () => {
                 <FormControl fullWidth>
                   <InputLabel shrink>State</InputLabel>
                   <Select
-                    value={employee.state || ''}
+                    value={employeeData.state || ''}
                     label="State"
                     onChange={handleSelectChange('state')}
                     disabled={!editMode}
@@ -387,7 +387,7 @@ const EmployeeDetail = () => {
                 <TextField
                   label="State"
                   fullWidth
-                  value={employee.state || ''}
+                  value={employeeData.state || ''}
                   onChange={handleChange('state')}
                   disabled={!editMode}
                 />
@@ -397,7 +397,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Country</InputLabel>
                 <Select
-                  value={employee.country || ''}
+                  value={employeeData.country || ''}
                   label="Country"
                   onChange={handleSelectChange('country')}
                   disabled={!editMode}
@@ -426,7 +426,7 @@ const EmployeeDetail = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={employee.employment_start || ''}
+                value={employeeData.employment_start || ''}
                 onChange={handleChange('employment_start')}
                 disabled={!editMode}
               />
@@ -437,7 +437,7 @@ const EmployeeDetail = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={employee.employment_end || ''}
+                value={employeeData.employment_end || ''}
                 onChange={handleChange('employment_end')}
                 disabled={!editMode}
               />
@@ -446,7 +446,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Religion"
                 fullWidth
-                value={employee.religion || ''}
+                value={employeeData.religion || ''}
                 onChange={handleChange('religion')}
                 disabled={!editMode}
               />
@@ -455,7 +455,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Marital Status</InputLabel>
                 <Select
-                  value={employee.marital_status || ''}
+                  value={employeeData.marital_status || ''}
                   label="Marital Status"
                   onChange={handleSelectChange('marital_status')}
                   disabled={!editMode}
@@ -472,7 +472,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Education"
                 fullWidth
-                value={employee.education || ''}
+                value={employeeData.education || ''}
                 onChange={handleChange('education')}
                 disabled={!editMode}
               />
@@ -483,7 +483,7 @@ const EmployeeDetail = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={employee.date_of_birth || ''}
+                value={employeeData.date_of_birth || ''}
                 onChange={handleChange('date_of_birth')}
                 disabled={!editMode}
               />
@@ -492,7 +492,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Place of Birth"
                 fullWidth
-                value={employee.place_of_birth || ''}
+                value={employeeData.place_of_birth || ''}
                 onChange={handleChange('place_of_birth')}
                 disabled={!editMode}
               />
@@ -501,7 +501,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Country of Birth</InputLabel>
                 <Select
-                  value={employee.country_of_birth || ''}
+                  value={employeeData.country_of_birth || ''}
                   label="Country of Birth"
                   onChange={handleSelectChange('country_of_birth')}
                   disabled={!editMode}
@@ -519,7 +519,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Birth Name"
                 fullWidth
-                value={employee.birth_name || ''}
+                value={employeeData.birth_name || ''}
                 onChange={handleChange('birth_name')}
                 disabled={!editMode}
               />
@@ -528,7 +528,7 @@ const EmployeeDetail = () => {
               <FormControl fullWidth>
                 <InputLabel shrink>Citizenship</InputLabel>
                 <Select
-                  value={employee.citizenship || ''}
+                  value={employeeData.citizenship || ''}
                   label="Citizenship"
                   onChange={handleSelectChange('citizenship')}
                   disabled={!editMode}
@@ -546,29 +546,10 @@ const EmployeeDetail = () => {
               <TextField
                 label="Place of Residence"
                 fullWidth
-                value={employee.place_of_residence || ''}
+                value={employeeData.place_of_residence || ''}
                 onChange={handleChange('place_of_residence')}
                 disabled={!editMode}
               />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel shrink>Employer</InputLabel>
-                <Select
-                  value={employee.client_id || ''}
-                  label="Employer"
-                  onChange={handleSelectChange('client_id')}
-                  disabled={!editMode}
-                  notched
-                >
-                  <MenuItem value="">None</MenuItem>
-                  {clients.map((client) => (
-                    <MenuItem key={client.id} value={client.id}>
-                      {client.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
             </Grid>
           </Grid>
         </TabPanel>
@@ -583,7 +564,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Bank Name"
                 fullWidth
-                value={employee.bank_name || ''}
+                value={employeeData.bank_name || ''}
                 onChange={handleChange('bank_name')}
                 disabled={!editMode}
               />
@@ -592,7 +573,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Bank Code No."
                 fullWidth
-                value={employee.bank_code_no || ''}
+                value={employeeData.bank_code_no || ''}
                 onChange={handleChange('bank_code_no')}
                 disabled={!editMode}
               />
@@ -601,7 +582,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="Bank Account No."
                 fullWidth
-                value={employee.bank_account_no || ''}
+                value={employeeData.bank_account_no || ''}
                 onChange={handleChange('bank_account_no')}
                 disabled={!editMode}
               />
@@ -610,7 +591,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="IBAN"
                 fullWidth
-                value={employee.iban || ''}
+                value={employeeData.iban || ''}
                 onChange={handleChange('iban')}
                 disabled={!editMode}
               />
@@ -619,7 +600,7 @@ const EmployeeDetail = () => {
               <TextField
                 label="SWIFT/BIC"
                 fullWidth
-                value={employee.swift_bic || ''}
+                value={employeeData.swift_bic || ''}
                 onChange={handleChange('swift_bic')}
                 disabled={!editMode}
               />
