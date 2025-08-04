@@ -20,7 +20,8 @@ module.exports = (req, res, next) => {
       return res.status(401).json({ message: 'Token verification failed' });
     }
     req.user = decoded;
-    console.log('Decoded token:', { uid: decoded.uid, roles: decoded.roles }); // Log non-sensitive parts
+    req.user.role = decoded.roles ? decoded.roles[0] : null;  // Set a singular 'role' for easier access
+    console.log('Decoded token:', { uid: decoded.uid, roles: decoded.roles, role: req.user.role }); // Log non-sensitive parts
     next();
   });
 };

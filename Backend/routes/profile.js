@@ -1,137 +1,123 @@
-// Backend/routes/profile.js
+// backend/routes/profile.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 const db = require('../config/db');
-const verifyToken = require('../middleware/auth');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
+// Middleware to verify JWT
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split('Bearer ')[1];
+  if (!token) {
+    console.error('No token provided in headers:', req.headers);
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('Decoded JWT:', decoded);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    console.error('Token verification error:', err.message);
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+};
+
+// GET /api/profile - Fetch current user's profile
 router.get('/', verifyToken, async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT uid, username, email, name, academic_title, salutation, gender, first_name, last_name, street1, street2, zip, city, state, country, phone, website, employment_start, employment_end, religion, marital_status, education, date_of_birth, place_of_birth, country_of_birth, birth_name, citizenship, place_of_residence, bank_name, bank_code_no, bank_account_no, iban, swift_bic, role FROM fe_users WHERE uid = $1',
+      `SELECT uid, username, email, created_at, updated_at, status, role, first_name, last_name, name,
+              academic_title, salutation, gender, phone, website, employment_start, employment_end,
+              religion, marital_status, education, date_of_birth, place_of_birth, country_of_birth,
+              birth_name, citizenship, place_of_residence, street1, street2, zip, city, state, country,
+              bank_name, bank_code_no, bank_account_no, iban, swift_bic
+       FROM fe_users WHERE uid = $1`,
       [req.user.uid]
     );
-    if (result.rows.length === 0) return res.status(404).json({ message: 'User not found' });
-    res.json(result.rows[0]);
+    console.log('Query result:', result.rows);
+    if (result.rows.length === 0) {
+      console.error('No user found for uid:', req.user.uid);
+      return res.status(404).json({ message: 'User not found' });
+    }
+    console.log('Profile data fetched:', result.rows[0]);
+    res.json({ data: result.rows[0] });
   } catch (err) {
-    console.error('Get profile error:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('Fetch profile error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
+// PUT /api/profile - Update current user's profile
 router.put('/', verifyToken, async (req, res) => {
   const {
-    name,
-    academic_title,
-    salutation,
-    gender,
-    first_name,
-    last_name,
-    street1,
-    street2,
-    zip,
-    city,
-    state,
-    country,
-    phone,
-    website,
-    employment_start,
-    employment_end,
-    religion,
-    marital_status,
-    education,
-    date_of_birth,
-    place_of_birth,
-    country_of_birth,
-    birth_name,
-    citizenship,
-    place_of_residence,
-    bank_name,
-    bank_code_no,
-    bank_account_no,
-    iban,
-    swift_bic,
-    email
+    username, email, first_name, last_name, name, academic_title, salutation, gender, phone, website,
+    employment_start, employment_end, religion, marital_status, education, date_of_birth,
+    place_of_birth, country_of_birth, birth_name, citizenship, place_of_residence, street1,
+    street2, zip, city, state, country, bank_name, bank_code_no, bank_account_no, iban, swift_bic
   } = req.body;
-  console.log('Profile update attempt:', req.body);
   try {
-    const updates = [];
-    const values = [];
-    let index = 1;
-
-    if (name) { updates.push(`name = $${index++}`); values.push(name); }
-    if (email) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return res.status(400).json({ message: 'Email must be a valid email' });
-      }
-      const emailCheck = await db.query('SELECT * FROM fe_users WHERE username = $1 AND uid != $2', [email, req.user.uid]);
-      if (emailCheck.rows.length > 0) return res.status(400).json({ message: 'Email already registered' });
-      updates.push(`username = $${index++}, email = $${index++}`);
-      values.push(email, email);
+    console.log('Received update data:', req.body);
+    const result = await db.query(
+      `UPDATE fe_users SET
+        username = $1, email = $2, first_name = $3, last_name = $4, name = $5,
+        academic_title = $6, salutation = $7, gender = $8, phone = $9, website = $10,
+        employment_start = $11, employment_end = $12, religion = $13, marital_status = $14,
+        education = $15, date_of_birth = $16, place_of_birth = $17, country_of_birth = $18,
+        birth_name = $19, citizenship = $20, place_of_residence = $21, street1 = $22,
+        street2 = $23, zip = $24, city = $25, state = $26, country = $27, bank_name = $28,
+        bank_code_no = $29, bank_account_no = $30, iban = $31, swift_bic = $32, updated_at = NOW()
+       WHERE uid = $33
+       RETURNING uid, username, email, created_at, updated_at, role, status, first_name, last_name, name,
+                academic_title, salutation, gender, phone, website, employment_start, employment_end,
+                religion, marital_status, education, date_of_birth, place_of_birth, country_of_birth,
+                birth_name, citizenship, place_of_residence, street1, street2, zip, city, state, country,
+                bank_name, bank_code_no, bank_account_no, iban, swift_bic`,
+      [
+        username || null, email || null, first_name || null, last_name || null, name || null,
+        academic_title || null, salutation || null, gender || null, phone || null, website || null,
+        employment_start || null, employment_end || null, religion || null, marital_status || null,
+        education || null, date_of_birth || null, place_of_birth || null, country_of_birth || null,
+        birth_name || null, citizenship || null, place_of_residence || null, street1 || null,
+        street2 || null, zip || null, city || null, state || null, country || null, bank_name || null,
+        bank_code_no || null, bank_account_no || null, iban || null, swift_bic || null,
+        req.user.uid
+      ]
+    );
+    if (result.rows.length === 0) {
+      console.error('No user found for update, uid:', req.user.uid);
+      return res.status(404).json({ message: 'User not found' });
     }
-    if (academic_title) { updates.push(`academic_title = $${index++}`); values.push(academic_title); }
-    if (salutation) { updates.push(`salutation = $${index++}`); values.push(salutation); }
-    if (gender) { updates.push(`gender = $${index++}`); values.push(gender); }
-    if (first_name) { updates.push(`first_name = $${index++}`); values.push(first_name); }
-    if (last_name) { updates.push(`last_name = $${index++}`); values.push(last_name); }
-    if (street1) { updates.push(`street1 = $${index++}`); values.push(street1); }
-    if (street2) { updates.push(`street2 = $${index++}`); values.push(street2); }
-    if (zip) { updates.push(`zip = $${index++}`); values.push(zip); }
-    if (city) { updates.push(`city = $${index++}`); values.push(city); }
-    if (state) { updates.push(`state = $${index++}`); values.push(state); }
-    if (country) { updates.push(`country = $${index++}`); values.push(country); }
-    if (phone) { updates.push(`phone = $${index++}`); values.push(phone); }
-    if (website) { updates.push(`website = $${index++}`); values.push(website); }
-    if (employment_start) { updates.push(`employment_start = $${index++}`); values.push(employment_start); }
-    if (employment_end) { updates.push(`employment_end = $${index++}`); values.push(employment_end); }
-    if (religion) { updates.push(`religion = $${index++}`); values.push(religion); }
-    if (marital_status) { updates.push(`marital_status = $${index++}`); values.push(marital_status); }
-    if (education) { updates.push(`education = $${index++}`); values.push(education); }
-    if (date_of_birth) { updates.push(`date_of_birth = $${index++}`); values.push(date_of_birth); }
-    if (place_of_birth) { updates.push(`place_of_birth = $${index++}`); values.push(place_of_birth); }
-    if (country_of_birth) { updates.push(`country_of_birth = $${index++}`); values.push(country_of_birth); }
-    if (birth_name) { updates.push(`birth_name = $${index++}`); values.push(birth_name); }
-    if (citizenship) { updates.push(`citizenship = $${index++}`); values.push(citizenship); }
-    if (place_of_residence) { updates.push(`place_of_residence = $${index++}`); values.push(place_of_residence); }
-    if (bank_name) { updates.push(`bank_name = $${index++}`); values.push(bank_name); }
-    if (bank_code_no) { updates.push(`bank_code_no = $${index++}`); values.push(bank_code_no); }
-    if (bank_account_no) { updates.push(`bank_account_no = $${index++}`); values.push(bank_account_no); }
-    if (iban) { updates.push(`iban = $${index++}`); values.push(iban); }
-    if (swift_bic) { updates.push(`swift_bic = $${index++}`); values.push(swift_bic); }
-
-    if (updates.length === 0) return res.status(400).json({ message: 'No updates provided' });
-
-    values.push(req.user.uid);
-    const query = `UPDATE fe_users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE uid = $${index} RETURNING *`;
-    const result = await db.query(query, values);
-    if (result.rows.length === 0) return res.status(404).json({ message: 'User not found' });
-    const user = result.rows[0];
-    const token = jwt.sign({ uid: user.uid, username: user.username, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    res.json({ ...user, token });
+    console.log('Profile updated:', result.rows[0]);
+    res.json({ data: result.rows[0] });
   } catch (err) {
-    console.error('Profile update error:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('Update profile error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
+// PUT /api/change-password - Update current user's password
 router.put('/change-password', verifyToken, async (req, res) => {
   const { password } = req.body;
-  console.log('Password change attempt for user:', req.user.uid);
+  if (!password || password.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  }
   try {
-    if (!password) return res.status(400).json({ message: 'Password is required' });
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const password_hash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'UPDATE fe_users SET password = $1 WHERE uid = $2 RETURNING *',
-      [hashedPassword, req.user.uid]
+      'UPDATE fe_users SET password_hash = $1, updated_at = NOW() WHERE uid = $2 RETURNING uid',
+      [password_hash, req.user.uid]
     );
-    if (result.rows.length === 0) return res.status(404).json({ message: 'User not found' });
-    const user = result.rows[0];
-    const token = jwt.sign({ uid: user.uid, username: user.username, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    res.json({ ...user, token });
+    if (result.rows.length === 0) {
+      console.error('No user found for password update, uid:', req.user.uid);
+      return res.status(404).json({ message: 'User not found' });
+    }
+    console.log('Password updated for uid:', req.user.uid);
+    res.json({ message: 'Password updated successfully' });
   } catch (err) {
-    console.error('Password change error:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('Password update error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 

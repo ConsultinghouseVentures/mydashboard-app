@@ -1,4 +1,4 @@
-// backend/routes/employees.js
+// backend/routes/shareholders.js
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
@@ -6,70 +6,79 @@ const auth = require('../middleware/auth');
 const { checkPermission } = require('./permissions');
 const bcrypt = require('bcryptjs');
 
-// GET /api/employees
-router.get('/', auth, checkPermission('employees', 'view'), async (req, res) => {
+// GET /api/shareholders
+router.get('/', auth, checkPermission('clients', 'view'), async (req, res) => {
   try {
     const { client_id } = req.query;
     let query = `
       SELECT u.*, 
-             c.client_name AS client_name,
              (SELECT array_agg(r.name) FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = u.uid) as user_roles
       FROM fe_users u
-      LEFT JOIN clients c ON u.client_id = c.uid
-      WHERE 'Employee' = ANY (SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = u.uid)
     `;
     let values = [];
     let isAdmin = req.user.roles && req.user.roles[0] && req.user.roles[0].toLowerCase() === 'admin';
 
+    if (!isAdmin) {
+      query += ` JOIN clients c ON u.client_id = c.uid`;
+    }
+
     if (client_id) {
-      query += ` AND u.client_id = $${values.length + 1}`;
+      if (values.length === 0) {
+        query += ` WHERE`;
+      } else {
+        query += ` AND`;
+      }
+      query += ` u.client_id = $${values.length + 1}`;
       values.push(client_id);
     }
 
     if (!isAdmin) {
-      query += ` AND EXISTS (SELECT 1 FROM clients cl WHERE cl.uid = u.client_id AND cl.created_by = $${values.length + 1})`;
+      if (values.length === 0) {
+        query += ` WHERE`;
+      } else {
+        query += ` AND`;
+      }
+      query += ` c.created_by = $${values.length + 1}`;
       values.push(req.user.uid);
     }
 
     const result = await db.query(query, values);
     res.json({ data: result.rows || [] });
   } catch (err) {
-    console.error('Employees error:', err);
+    console.error('Shareholders error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// GET /api/employees/:uid
-router.get('/:uid', auth, checkPermission('employees', 'view'), async (req, res) => {
+// GET /api/shareholders/:uid
+router.get('/:uid', auth, checkPermission('clients', 'view'), async (req, res) => {
   const { uid } = req.params;
   try {
     let query = `
       SELECT u.*, 
-             c.client_name AS client_name,
              (SELECT array_agg(r.name) FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = u.uid) as user_roles
       FROM fe_users u
-      LEFT JOIN clients c ON u.client_id = c.uid
       WHERE u.uid = $1
     `;
     let values = [uid];
     let isAdmin = req.user.roles && req.user.roles[0] && req.user.roles[0].toLowerCase() === 'admin';
 
     if (!isAdmin) {
-      query += ` AND EXISTS (SELECT 1 FROM clients cl WHERE cl.uid = u.client_id AND cl.created_by = $2)`;
+      query += ` AND EXISTS (SELECT 1 FROM clients c WHERE c.uid = u.client_id AND c.created_by = $2)`;
       values.push(req.user.uid);
     }
 
     const result = await db.query(query, values);
-    if (result.rows.length === 0) return res.status(404).json({ message: 'Employee not found' });
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Shareholder not found' });
     res.json({ data: result.rows[0] });
   } catch (err) {
-    console.error('Employee detail error:', err);
+    console.error('Shareholder detail error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// POST /api/employees
-router.post('/', auth, checkPermission('employees', 'add'), async (req, res) => {
+// POST /api/shareholders
+router.post('/', auth, checkPermission('clients', 'edit'), async (req, res) => {
   let { username, password, email, name, first_name, last_name, phone, website, employment_start, client_id, role } = req.body;
   try {
     if (!username || !password || !email) {
@@ -96,13 +105,13 @@ router.post('/', auth, checkPermission('employees', 'add'), async (req, res) => 
 
     res.json({ data: newUser });
   } catch (err) {
-    console.error('Employee create error:', err);
+    console.error('Shareholder create error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// PUT /api/employees/:uid
-router.put('/:uid', auth, checkPermission('employees', 'edit'), async (req, res) => {
+// PUT /api/shareholders/:uid
+router.put('/:uid', auth, checkPermission('clients', 'edit'), async (req, res) => {
   const { uid } = req.params;
   const body = req.body;
   try {
@@ -137,16 +146,16 @@ router.put('/:uid', auth, checkPermission('employees', 'edit'), async (req, res)
     query += ` RETURNING *`;
 
     const result = await db.query(query, values);
-    if (result.rows.length === 0) return res.status(404).json({ message: 'Employee not found' });
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Shareholder not found' });
     res.json({ data: result.rows[0] });
   } catch (err) {
-    console.error('Employee update error:', err);
+    console.error('Shareholder update error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// DELETE /api/employees/:uid
-router.delete('/:uid', auth, checkPermission('employees', 'delete'), async (req, res) => {
+// DELETE /api/shareholders/:uid
+router.delete('/:uid', auth, checkPermission('clients', 'delete'), async (req, res) => {
   const { uid } = req.params;
   try {
     let query = `DELETE FROM fe_users WHERE uid = $1`;
@@ -157,10 +166,10 @@ router.delete('/:uid', auth, checkPermission('employees', 'delete'), async (req,
       values.push(req.user.uid);
     }
     const result = await db.query(query, values);
-    if (result.rowCount === 0) return res.status(404).json({ message: 'Employee not found' });
-    res.json({ message: 'Employee deleted' });
+    if (result.rowCount === 0) return res.status(404).json({ message: 'Shareholder not found' });
+    res.json({ message: 'Shareholder deleted' });
   } catch (err) {
-    console.error('Employee delete error:', err);
+    console.error('Shareholder delete error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

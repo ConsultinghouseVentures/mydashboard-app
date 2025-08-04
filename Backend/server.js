@@ -1,4 +1,4 @@
-// server.js
+// backend/server.js
 const express = require('express');
 const { Pool } = require('pg');
 require('dotenv').config();
@@ -40,20 +40,26 @@ app.use('/api/profile', require('./routes/profile'));
 app.use('/api/clients', require('./routes/clients'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/employees', require('./routes/employees'));
+app.use('/api/shareholders', require('./routes/shareholders'));
+app.use('/api/services', require('./routes/services'));
+app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/documents', require('./routes/documents'));
+app.use('/api/letters', require('./routes/letters'));
 app.use('/api/serviceitems', require('./routes/serviceitems'));
-app.use('/api/permissions', require('./routes/permissions')); // Add permissions router
+app.use('/api/permissions', require('./routes/permissions'));
+app.use('/api/roles', require('./routes/roles'));
 
 app.get('/', (req, res) => {
   res.send('Backend server is running!');
 });
 
-// Global error handler (add this from your utils if it exists, or implement)
+// Global error handler
 app.use((err, req, res, next) => {
   console.error('Global error:', err.message);
   res.status(500).json({ error: 'Server error' });
 });
 
-module.exports = app;  // Export the app for Vercel
+module.exports = app; // Export the app for Vercel
 
 // Conditional listen for local development
 if (require.main === module) {
