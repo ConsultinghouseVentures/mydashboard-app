@@ -39,9 +39,9 @@ const PermissionsMatrix = () => {
 
   const [effectiveRoles, setEffectiveRoles] = useState([]);
   const [effectiveModuleData, setEffectiveModuleData] = useState({
-    users: { permissions: [], access: {} },
-    clients: { permissions: [], access: {} },
-    employees: { permissions: [], access: {} },
+    users: { permissions: ['view_users', 'edit_users', 'assign_roles', 'add_users', 'delete_users'], access: {} },
+    clients: { permissions: ['view_clients', 'edit_clients', 'delete_clients'], access: {} },
+    employees: { permissions: ['view_employees', 'edit_employees', 'delete_employees'], access: {} },
   });
 
   // Fetch permissions data from backend
@@ -55,12 +55,42 @@ const PermissionsMatrix = () => {
         return;
       }
       try {
-        const response = await api.get('/api/permissions/permissions-matrix', {
+        const response = await api.get('/permissions/permissions-matrix', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const { roles, moduleData } = response; // Adjusted for backend response
-        setEffectiveRoles(roles);
-        setEffectiveModuleData(moduleData);
+        console.log('Permissions matrix response:', response);
+        const { roles, moduleData } = response;
+        // Ensure delete_<module> is included in access for all roles
+        const updatedModuleData = {
+          users: {
+            permissions: moduleData.users.permissions,
+            access: {},
+          },
+          clients: {
+            permissions: moduleData.clients.permissions,
+            access: {},
+          },
+          employees: {
+            permissions: moduleData.employees.permissions,
+            access: {},
+          },
+        };
+        roles.forEach((role) => {
+          updatedModuleData.users.access[role] = {
+            ...moduleData.users.access[role],
+            delete_users: moduleData.users.access[role]?.delete_users || false,
+          };
+          updatedModuleData.clients.access[role] = {
+            ...moduleData.clients.access[role],
+            delete_clients: moduleData.clients.access[role]?.delete_clients || moduleData.clients.access[role]?.delete_employees || false,
+          };
+          updatedModuleData.employees.access[role] = {
+            ...moduleData.employees.access[role],
+            delete_employees: moduleData.employees.access[role]?.delete_employees || false,
+          };
+        });
+        setEffectiveRoles(roles || []);
+        setEffectiveModuleData(updatedModuleData);
         setLoading(false);
       } catch (err) {
         console.error('Fetch permissions error:', err);
@@ -87,21 +117,22 @@ const PermissionsMatrix = () => {
       id: role,
       role,
       ...effectiveModuleData[module].access[role],
+      [`delete_${module}`]: effectiveModuleData[module].access[role]?.[`delete_${module}`] || false,
     }));
 
   // Columns for a module
-  const getColumns = (permissions) => [
+  const getColumns = (module) => [
     {
       field: 'role',
       headerName: 'Role',
       width: 150,
-      editable: user?.role.toLowerCase() === 'admin',
+      editable: user?.role?.toLowerCase() === 'admin' || (Array.isArray(user?.roles) && user?.roles[0]?.toLowerCase() === 'admin'),
     },
-    ...permissions.map((perm) => ({
+    ...effectiveModuleData[module].permissions.map((perm) => ({
       field: perm,
       headerName: perm.charAt(0).toUpperCase() + perm.slice(1).replace('_', ' '),
       width: 150,
-      editable: user?.role.toLowerCase() === 'admin',
+      editable: user?.role?.toLowerCase() === 'admin' || (Array.isArray(user?.roles) && user?.roles[0]?.toLowerCase() === 'admin'),
       renderCell: (params) => {
         const hasAccess = params.value;
         return hasAccess ? <CheckIcon color="success" /> : <CloseIcon color="error" />;
@@ -116,7 +147,8 @@ const PermissionsMatrix = () => {
   ];
 
   const handleProcessRowUpdate = async (newRow, oldRow, module) => {
-    if (user?.role.toLowerCase() !== 'admin') {
+    const isAdmin = user?.role?.toLowerCase() === 'admin' || (Array.isArray(user?.roles) && user?.roles[0]?.toLowerCase() === 'admin');
+    if (!isAdmin) {
       showSnackbar('Only admins can edit permissions', 'error');
       return oldRow;
     }
@@ -124,6 +156,8 @@ const PermissionsMatrix = () => {
     const updatedModuleData = { ...effectiveModuleData };
     const oldRole = oldRow.role;
     const newRole = newRow.role;
+
+    console.log(`Updating row for module ${module}:`, { newRow, oldRow });
 
     if (newRole !== oldRole) {
       if (effectiveRoles.includes(newRole)) {
@@ -133,7 +167,7 @@ const PermissionsMatrix = () => {
       try {
         const token = localStorage.getItem('token');
         await api.put(
-          '/api/permissions/roles',
+          '/permissions/roles',
           { oldRole, newRole },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -162,7 +196,9 @@ const PermissionsMatrix = () => {
 
     const currentAccess = { ...updatedModuleData[module].access };
     const roleAccess = { ...currentAccess[newRole || oldRow.role] };
-    effectiveModuleData[module].permissions.forEach((perm) => {
+    // Update all permissions, including delete_<module>
+    const allPermissions = [...effectiveModuleData[module].permissions, `delete_${module}`];
+    allPermissions.forEach((perm) => {
       if (newRow[perm] !== oldRow[perm]) {
         roleAccess[perm] = newRow[perm];
       }
@@ -172,8 +208,9 @@ const PermissionsMatrix = () => {
 
     try {
       const token = localStorage.getItem('token');
+      console.log('Sending updated module data:', updatedModuleData);
       await api.put(
-        '/api/permissions/permissions-matrix',
+        '/permissions/permissions-matrix',
         { moduleData: updatedModuleData },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -194,7 +231,8 @@ const PermissionsMatrix = () => {
   };
 
   const handleAddRole = async () => {
-    if (user?.role.toLowerCase() !== 'admin') {
+    const isAdmin = user?.role?.toLowerCase() === 'admin' || (Array.isArray(user?.roles) && user?.roles[0]?.toLowerCase() === 'admin');
+    if (!isAdmin) {
       showSnackbar('Only admins can add roles', 'error');
       return;
     }
@@ -206,21 +244,23 @@ const PermissionsMatrix = () => {
     const updatedModuleData = { ...effectiveModuleData };
     modules.forEach((mod) => {
       const modAccess = { ...updatedModuleData[mod].access };
-      modAccess[newRoleName] = Object.fromEntries(updatedModuleData[mod].permissions.map((perm) => [perm, false]));
+      modAccess[newRoleName] = Object.fromEntries(
+        [...updatedModuleData[mod].permissions, `delete_${mod}`].map((perm) => [perm, false])
+      );
       updatedModuleData[mod].access = modAccess;
     });
 
     try {
       const token = localStorage.getItem('token');
       await api.post(
-        '/api/permissions/roles',
+        '/permissions/roles',
         { role: newRoleName },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
       await api.put(
-        '/api/permissions/permissions-matrix',
+        '/permissions/permissions-matrix',
         { moduleData: updatedModuleData },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -248,7 +288,8 @@ const PermissionsMatrix = () => {
   };
 
   const handleRemoveRoles = async () => {
-    if (user?.role.toLowerCase() !== 'admin') {
+    const isAdmin = user?.role?.toLowerCase() === 'admin' || (Array.isArray(user?.roles) && user?.roles[0]?.toLowerCase() === 'admin');
+    if (!isAdmin) {
       showSnackbar('Only admins can remove roles', 'error');
       return;
     }
@@ -265,14 +306,14 @@ const PermissionsMatrix = () => {
     try {
       const token = localStorage.getItem('token');
       await api.delete(
-        '/api/permissions/roles',
+        '/permissions/roles',
         {
           headers: { Authorization: `Bearer ${token}` },
           data: { roles: selectedRolesToRemove },
         }
       );
       await api.put(
-        '/api/permissions/permissions-matrix',
+        '/permissions/permissions-matrix',
         { moduleData: updatedModuleData },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -306,16 +347,16 @@ const PermissionsMatrix = () => {
   }
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', minHeight: '400px' }}>
       <Box sx={{ display: 'flex', gap: 1, mb: 2, justifyContent: 'flex-end' }}>
-        <Button variant="contained" onClick={() => setOpenAddDialog(true)} disabled={user?.role.toLowerCase() !== 'admin'}>
+        <Button variant="contained" onClick={() => setOpenAddDialog(true)} disabled={!(user?.role?.toLowerCase() === 'admin' || (Array.isArray(user?.roles) && user?.roles[0]?.toLowerCase() === 'admin'))}>
           Add Role
         </Button>
         <Button
           variant="contained"
           color="error"
           onClick={() => setOpenRemoveDialog(true)}
-          disabled={user?.role.toLowerCase() !== 'admin'}
+          disabled={!(user?.role?.toLowerCase() === 'admin' || (Array.isArray(user?.roles) && user?.roles[0]?.toLowerCase() === 'admin'))}
         >
           Remove Role
         </Button>
@@ -323,48 +364,42 @@ const PermissionsMatrix = () => {
       <Typography variant="h5" gutterBottom>
         User Management
       </Typography>
-      <Typography variant="h6" gutterBottom>
-        Roles and Permissions Matrix
-      </Typography>
-      <DataGrid
-        rows={getRows('users')}
-        columns={getColumns(effectiveModuleData.users.permissions)}
-        processRowUpdate={(newRow, oldRow) => handleProcessRowUpdate(newRow, oldRow, 'users')}
-        onProcessRowUpdateError={(error) => console.error('Row update error:', error)}
-        editMode="row"
-        disableSelectionOnClick
-        autoHeight
-      />
+      <Box sx={{ height: '400px', width: '100%' }}>
+        <DataGrid
+          rows={getRows('users')}
+          columns={getColumns('users')}
+          processRowUpdate={(newRow, oldRow) => handleProcessRowUpdate(newRow, oldRow, 'users')}
+          onProcessRowUpdateError={(error) => console.error('Row update error:', error)}
+          editMode="row"
+          disableSelectionOnClick
+        />
+      </Box>
       <Typography variant="h5" gutterBottom sx={{ mt: 4 }}>
         Clients Management
       </Typography>
-      <Typography variant="h6" gutterBottom>
-        Roles and Permissions Matrix
-      </Typography>
-      <DataGrid
-        rows={getRows('clients')}
-        columns={getColumns(effectiveModuleData.clients.permissions)}
-        processRowUpdate={(newRow, oldRow) => handleProcessRowUpdate(newRow, oldRow, 'clients')}
-        onProcessRowUpdateError={(error) => console.error('Row update error:', error)}
-        editMode="row"
-        disableSelectionOnClick
-        autoHeight
-      />
+      <Box sx={{ height: '400px', width: '100%' }}>
+        <DataGrid
+          rows={getRows('clients')}
+          columns={getColumns('clients')}
+          processRowUpdate={(newRow, oldRow) => handleProcessRowUpdate(newRow, oldRow, 'clients')}
+          onProcessRowUpdateError={(error) => console.error('Row update error:', error)}
+          editMode="row"
+          disableSelectionOnClick
+        />
+      </Box>
       <Typography variant="h5" gutterBottom sx={{ mt: 4 }}>
         Employee Management
       </Typography>
-      <Typography variant="h6" gutterBottom>
-        Roles and Permissions Matrix
-      </Typography>
-      <DataGrid
-        rows={getRows('employees')}
-        columns={getColumns(effectiveModuleData.employees.permissions)}
-        processRowUpdate={(newRow, oldRow) => handleProcessRowUpdate(newRow, oldRow, 'employees')}
-        onProcessRowUpdateError={(error) => console.error('Row update error:', error)}
-        editMode="row"
-        disableSelectionOnClick
-        autoHeight
-      />
+      <Box sx={{ height: '400px', width: '100%' }}>
+        <DataGrid
+          rows={getRows('employees')}
+          columns={getColumns('employees')}
+          processRowUpdate={(newRow, oldRow) => handleProcessRowUpdate(newRow, oldRow, 'employees')}
+          onProcessRowUpdateError={(error) => console.error('Row update error:', error)}
+          editMode="row"
+          disableSelectionOnClick
+        />
+      </Box>
       <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
         <DialogTitle>Add New Role</DialogTitle>
         <DialogContent>

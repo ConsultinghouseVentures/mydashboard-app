@@ -1,7 +1,7 @@
-// src/App.jsx
+// web/src/App.jsx
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Box, Toolbar, CircularProgress } from '@mui/material';
+import { Box, Toolbar, CircularProgress, Typography, Button } from '@mui/material';
 import jwtDecode from 'jwt-decode';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
@@ -20,9 +20,41 @@ const PermissionsMatrix = lazy(() => import('./components/PermissionsMatrix'));
 const UserDetail = lazy(() => import('./components/UserDetail'));
 const Register = lazy(() => import('./components/Register'));
 const MiniApps = lazy(() => import('./components/MiniApps'));
-const Employees = lazy(() => import('./components/Employees.jsx'));
+const Employees = lazy(() => import('./components/Employees'));
 const EmployeeDetail = lazy(() => import('./components/EmployeeDetail'));
-const NotFound = lazy(() => import('./components/NotFound.jsx'));
+const NotFound = lazy(() => import('./components/NotFound'));
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box sx={{ textAlign: 'center', mt: 4 }}>
+          <Typography color="error">Something went wrong: {this.state.error.message}</Typography>
+          <Button variant="contained" onClick={() => this.props.navigate('/dashboard')}>
+            Back to Dashboard
+          </Button>
+        </Box>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function ErrorBoundaryWrapper(props) {
+  const navigate = useNavigate();
+  return <ErrorBoundary navigate={navigate} {...props} />;
+}
 
 // PrivateRoute component for protected routes
 const PrivateRoute = ({ children }) => {
@@ -71,6 +103,7 @@ const AuthenticatedLayout = ({ children }) => (
 
 // Main App component
 const App = () => {
+  console.log('Rendering App component');
   return (
     <SnackbarProvider>
       <UserProvider>
@@ -82,115 +115,117 @@ const App = () => {
               </Box>
             }
           >
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <Dashboard />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/profile"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <Profile />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/clients"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <Clients />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/clients/:uid"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <ClientsDetail />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/admin/*"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <Admin />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              >
-                <Route index element={<UserManagement />} />
-                <Route path="user-management" element={<UserManagement />} />
-                <Route path="permissions-matrix" element={<PermissionsMatrix />} />
-              </Route>
-              <Route
-                path="/users/:uid"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <UserDetail />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/miniapps"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <MiniApps />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/employees"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <Employees />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/employees/:uid"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <EmployeeDetail />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/"
-                element={
-                  <PrivateRoute>
-                    <AuthenticatedLayout>
-                      <Dashboard />
-                    </AuthenticatedLayout>
-                  </PrivateRoute>
-                }
-              />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <ErrorBoundaryWrapper>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Dashboard />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/profile"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Profile />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/clients"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Clients />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/clients/:uid"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <ClientsDetail />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/*"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Admin />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                >
+                  <Route index element={<UserManagement />} />
+                  <Route path="user-management" element={<UserManagement />} />
+                  <Route path="permissions-matrix" element={<PermissionsMatrix />} />
+                </Route>
+                <Route
+                  path="/users/:uid"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <UserDetail />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/miniapps"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <MiniApps />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/employees"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Employees />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/employees/:uid"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <EmployeeDetail />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/"
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Dashboard />
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </ErrorBoundaryWrapper>
           </Suspense>
         </Router>
       </UserProvider>

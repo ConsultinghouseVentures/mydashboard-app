@@ -1,12 +1,14 @@
 // src/components/UserDetail.jsx
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Formik, Form, Field } from 'formik';
+import * as Yup from 'yup';
 import {
   Typography,
   Box,
   Button,
   TextField,
-  IconButton,
+  Avatar,
   Paper,
   Grid,
   MenuItem,
@@ -16,15 +18,14 @@ import {
   Tabs,
   Tab,
   Divider,
-  useTheme,
-  useMediaQuery,
   CircularProgress,
+  IconButton,
 } from '@mui/material';
 import { ArrowBack, Edit, Save } from '@mui/icons-material';
 import api from '../services/api';
 import { useSnackbar } from '../context/SnackbarContext';
 import { countries } from '../constants/countries';
-import { useUserRoles } from '../constants/roles'; // Updated to use hook for dynamic roles
+import { useUserRoles } from '../constants/roles';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -50,63 +51,100 @@ const usStates = [
   'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'
 ];
 
+const PasswordSchema = Yup.object().shape({
+  password: Yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
+  confirmPassword: Yup.string()
+    .oneOf([Yup.ref('password'), null], 'Passwords must match')
+    .required('Confirm Password is required'),
+});
+
+const usernameSchema = Yup.string().email('Invalid email address').required('User name (email) is required');
+
 const UserDetail = () => {
   const { uid } = useParams();
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { showSnackbar } = useSnackbar();
-  const { roles: USER_ROLES, loading: rolesLoading, error: rolesError } = useUserRoles(); // Use hook for dynamic roles
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { roles } = useUserRoles();
   const [tabValue, setTabValue] = useState(0);
   const [editMode, setEditMode] = useState(false);
+  const [userData, setUserData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchUser = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
+        showSnackbar('No authentication token found', 'error');
         navigate('/login', { replace: true });
+        setIsLoading(false);
         return;
       }
+      setIsLoading(true);
       try {
-        setLoading(true);
-        const response = await api.get(`/api/users/${uid}`, { headers: { Authorization: `Bearer ${token}` } });
-        setUserData(response.data || response); // Handle if response is data or wrapped
+        const response = await api.get(`/users/${uid}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('User detail response:', response);
+        const data = response.data.data || response.data;
+        if (!data || Object.keys(data).length === 0 || !data.uid) {
+          throw new Error('Invalid user data');
+        }
+        setUserData({
+          uid: data.uid || '',
+          username: data.username || data.email || '',
+          name: data.name || `${data.first_name || ''} ${data.last_name || ''}`.trim() || '',
+          role: data.role || 'None',
+          status: data.status || 'Active',
+          first_name: data.first_name || '',
+          last_name: data.last_name || '',
+          academic_title: data.academic_title || '',
+          salutation: data.salutation || '',
+          gender: data.gender || '',
+          phone: data.phone || '',
+          website: data.website || '',
+          employment_start: data.employment_start || '',
+          employment_end: data.employment_end || '',
+          religion: data.religion || '',
+          marital_status: data.marital_status || '',
+          education: data.education || '',
+          date_of_birth: data.date_of_birth || '',
+          place_of_birth: data.place_of_birth || '',
+          country_of_birth: data.country_of_birth || '',
+          birth_name: data.birth_name || '',
+          citizenship: data.citizenship || '',
+          place_of_residence: data.place_of_residence || '',
+          street1: data.street1 || '',
+          street2: data.street2 || '',
+          zip: data.zip || '',
+          city: data.city || '',
+          state: data.state || '',
+          country: data.country || '',
+          bank_name: data.bank_name || '',
+          bank_code_no: data.bank_code_no || '',
+          bank_account_no: data.bank_account_no || '',
+          iban: data.iban || '',
+          swift_bic: data.swift_bic || '',
+        });
+        setError(null);
       } catch (err) {
         console.error('Fetch user error:', err);
         setError(err.response?.data?.message || 'Failed to fetch user details');
         if (err.response?.status === 401) {
           localStorage.removeItem('token');
+          showSnackbar('Unauthorized: Please log in again', 'error');
           navigate('/login', { replace: true });
+        } else if (err.response?.status === 404) {
+          showSnackbar('User not found', 'error');
         } else {
-          showSnackbar('Failed to fetch user details', 'error');
+          showSnackbar('Failed to load user details', 'error');
         }
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
     fetchUser();
   }, [uid, navigate, showSnackbar]);
-
-  const handleSave = async () => {
-    const token = localStorage.getItem('token');
-    try {
-      const response = await api.put(`/api/users/${uid}`, userData, { headers: { Authorization: `Bearer ${token}` } });
-      setUserData(response.data || response);
-      setEditMode(false);
-      showSnackbar('User updated successfully', 'success');
-    } catch (err) {
-      console.error('Update user error:', err);
-      if (err.response?.status === 401) {
-        localStorage.removeItem('token');
-        navigate('/login', { replace: true });
-      } else {
-        showSnackbar('Failed to update user', 'error');
-      }
-    }
-  };
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -118,23 +156,68 @@ const UserDetail = () => {
     setUserData((prev) => ({ ...prev, [field]: value }));
   };
 
-  if (loading || rolesLoading) {
+  const handleSave = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showSnackbar('No authentication token found', 'error');
+      navigate('/login', { replace: true });
+      return;
+    }
+    try {
+      await usernameSchema.validate(userData.username);
+    } catch (validationErr) {
+      showSnackbar(validationErr.message, 'error');
+      return;
+    }
+    try {
+      const response = await api.put(`/users/${uid}`, { ...userData, email: userData.username }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const updatedData = response.data.data || response.data;
+      setUserData(updatedData);
+      setEditMode(false);
+      showSnackbar('User updated successfully', 'success');
+    } catch (err) {
+      console.error('Update user error:', err);
+      showSnackbar(err.response?.data?.message || 'Failed to update user', 'error');
+    }
+  };
+
+  const handlePasswordSubmit = async (values, { setSubmitting }) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showSnackbar('No authentication token found', 'error');
+      navigate('/login', { replace: true });
+      setSubmitting(false);
+      return;
+    }
+    try {
+      await api.put(`/users/${uid}/password`, { password: values.password }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showSnackbar('Password changed successfully', 'success');
+      setSubmitting(false);
+    } catch (err) {
+      console.error('Password change error:', err);
+      showSnackbar(err.response?.data?.message || 'Failed to change password', 'error');
+      setSubmitting(false);
+    }
+  };
+
+  if (isLoading) {
+    return <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} />;
+  }
+
+  if (error || !userData) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
-        <CircularProgress />
+      <Box sx={{ textAlign: 'center', mt: 4 }}>
+        <Typography color="error">{error || 'User not found'}</Typography>
+        <Button variant="contained" onClick={() => navigate('/admin/user-management')} sx={{ mt: 2 }}>
+          Back to User Management
+        </Button>
       </Box>
     );
   }
-
-  if (error || rolesError) {
-    return (
-      <Box sx={{ p: 2, textAlign: 'center' }}>
-        <Typography color="error">{error || rolesError}</Typography>
-      </Box>
-    );
-  }
-
-  if (!userData) return null;
 
   const isUS = userData.country === 'United States of America (the)';
 
@@ -146,7 +229,6 @@ const UserDetail = () => {
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: 'calc(100vh - 64px)',
-        backgroundColor: theme.palette.background.default,
       }}
     >
       <Paper
@@ -156,13 +238,12 @@ const UserDetail = () => {
           maxWidth: 950,
           p: 4,
           borderRadius: 4,
-          backgroundColor: theme.palette.background.paper,
           boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, justifyContent: 'space-between' }}>
           <Typography variant="h4" component="h1">
-            User: {userData.name || ''}
+            User Profile
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             {!editMode ? (
@@ -174,17 +255,28 @@ const UserDetail = () => {
                 Save
               </Button>
             )}
-            <IconButton onClick={() => navigate('/admin')}>
+            <IconButton onClick={() => navigate('/admin/user-management')}>
               <ArrowBack />
             </IconButton>
           </Box>
         </Box>
 
-        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered variant={isMobile ? 'scrollable' : 'standard'}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
+          <Avatar
+            sx={{ width: 120, height: 120, fontSize: 48 }}
+            alt={userData.name || 'User'}
+            src="/placeholder-avatar.jpg"
+          >
+            {userData.name?.charAt(0) || ''}
+          </Avatar>
+        </Box>
+
+        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered>
           <Tab label="Login" />
           <Tab label="Personal" />
           <Tab label="Payroll" />
           <Tab label="Bank" />
+          <Tab label="Security" />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
@@ -204,11 +296,10 @@ const UserDetail = () => {
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Email"
-                type="email"
+                label="User name (email)"
                 fullWidth
-                value={userData.email || ''}
-                onChange={handleChange('email')}
+                value={userData.username || ''}
+                onChange={handleChange('username')}
                 disabled={!editMode}
               />
             </Grid>
@@ -217,15 +308,27 @@ const UserDetail = () => {
                 <InputLabel>Role</InputLabel>
                 <Select
                   value={userData.role || ''}
-                  label="Role"
                   onChange={handleSelectChange('role')}
                   disabled={!editMode}
                 >
-                  {USER_ROLES.map((role) => (
+                  {roles.map((role) => (
                     <MenuItem key={role.value} value={role.value}>
                       {role.label}
                     </MenuItem>
                   ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={userData.status || 'Active'}
+                  onChange={handleSelectChange('status')}
+                  disabled={!editMode}
+                >
+                  <MenuItem value="Active">Active</MenuItem>
+                  <MenuItem value="Inactive">Inactive</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -422,7 +525,7 @@ const UserDetail = () => {
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Beginning of Employment"
+                label="Employment Start"
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
@@ -433,7 +536,7 @@ const UserDetail = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="End of Employment"
+                label="Employment End"
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
@@ -607,11 +710,57 @@ const UserDetail = () => {
             </Grid>
           </Grid>
         </TabPanel>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-          <Button variant="outlined" onClick={() => navigate('/admin')}>
-            Back
-          </Button>
-        </Box>
+
+        <TabPanel value={tabValue} index={4}>
+          <Typography variant="h6" gutterBottom>
+            Change Password
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
+          <Formik
+            initialValues={{ password: '', confirmPassword: '' }}
+            validationSchema={PasswordSchema}
+            onSubmit={handlePasswordSubmit}
+          >
+            {({ errors, touched, isSubmitting }) => (
+              <Form>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <Field
+                      as={TextField}
+                      name="password"
+                      label="New Password"
+                      type="password"
+                      fullWidth
+                      error={touched.password && !!errors.password}
+                      helperText={touched.password && errors.password}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Field
+                      as={TextField}
+                      name="confirmPassword"
+                      label="Confirm New Password"
+                      type="password"
+                      fullWidth
+                      error={touched.confirmPassword && !!errors.confirmPassword}
+                      helperText={touched.confirmPassword && errors.confirmPassword}
+                    />
+                  </Grid>
+                </Grid>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  fullWidth
+                  sx={{ mt: 3 }}
+                  disabled={isSubmitting}
+                >
+                  Change Password
+                </Button>
+              </Form>
+            )}
+          </Formik>
+        </TabPanel>
       </Paper>
     </Box>
   );

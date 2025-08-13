@@ -2,7 +2,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
+  timeout: 10000,
 });
 
 // Interceptor to throw errors on non-2xx responses
@@ -16,27 +17,59 @@ api.interceptors.response.use(
 
 export default {
   login: async (email, password) => {
-    const response = await api.post('/api/login', { username: email, password });
+    const response = await api.post('/login', { username: email, password });
     return response.data;
   },
   register: async (email, password, first_name, last_name) => {
-    const response = await api.post('/api/register', { username: email, password, first_name, last_name });
-    return response.data;
-  },
-  updateProfile: async (data, config) => {
-    const response = await api.put('/api/profile', data, config);
-    return response.data;
-  },
-  changePassword: async (data, config) => {
-    const response = await api.put('/api/change-password', data, config);
+    const response = await api.post('/register', { username: email, password, first_name, last_name });
     return response.data;
   },
   getProfile: async (config) => {
-    const response = await api.get('/api/profile', config);
+    const response = await api.get('/profile', config);
+    return response.data;
+  },
+  updateProfile: async (data, config) => {
+    const response = await api.put('/profile', data, config);
+    return response.data;
+  },
+  changePassword: async (data, config) => {
+    const response = await api.put('/change-password', data, config);
+    return response.data;
+  },
+  getUsers: async (config) => {
+    const response = await api.get('/users', config);
+    return response.data;
+  },
+  getUser: async (uid, config) => {
+    const response = await api.get(`/users/${uid}`, config);
+    return response.data;
+  },
+  updateUser: async (uid, data, config) => {
+    const response = await api.put(`/users/${uid}`, data, config);
+    return response.data;
+  },
+  deleteUser: async (uid, config) => {
+    const response = await api.delete(`/users/${uid}`, config);
+    return response.data;
+  },
+  getEmployees: async (config) => {
+    const response = await api.get('/employees', config);
+    return response.data;
+  },
+  getEmployee: async (uid, config) => {
+    const response = await api.get(`/employees/${uid}`, config);
+    return response.data;
+  },
+  updateEmployee: async (uid, data, config) => {
+    const response = await api.put(`/employees/${uid}`, data, config);
     return response.data;
   },
   get: async (url, config) => {
     const response = await api.get(url, config);
+    return response.data;
+  },
+  post: async (url, data, config) => {
+    const response = await api.post(url, data, config);
     return response.data;
   },
   put: async (url, data, config) => {
@@ -45,22 +78,6 @@ export default {
   },
   delete: async (url, config) => {
     const response = await api.delete(url, config);
-    return response.data;
-  },
-  post: async (url, data, config) => {
-    const response = await api.post(url, data, config);
-    return response.data;
-  },
-  getEmployees: async (config) => {
-    const response = await api.get('/api/employees', config);
-    return response.data;
-  },
-  getEmployee: async (uid, config) => {
-    const response = await api.get(`/api/employees/${uid}`, config);
-    return response.data;
-  },
-  updateEmployee: async (uid, data, config) => {
-    const response = await api.put(`/api/employees/${uid}`, data, config);
     return response.data;
   },
 };

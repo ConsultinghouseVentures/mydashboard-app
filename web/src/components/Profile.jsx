@@ -21,12 +21,14 @@ import {
   useTheme,
   useMediaQuery,
   IconButton,
+  CircularProgress,
 } from '@mui/material';
 import { ArrowBack, Edit, Save } from '@mui/icons-material';
 import api from '../services/api';
 import { useSnackbar } from '../context/SnackbarContext';
 import { useUser } from '../context/UserContext';
 import { countries } from '../constants/countries';
+import jwtDecode from 'jwt-decode';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -59,6 +61,8 @@ const PasswordSchema = Yup.object().shape({
     .required('Confirm Password is required'),
 });
 
+const usernameSchema = Yup.string().email('Invalid email address').required('User name (email) is required');
+
 const Profile = () => {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -69,6 +73,7 @@ const Profile = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [profileData, setProfileData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Listen for sidebar collapse state
   useEffect(() => {
@@ -84,42 +89,178 @@ const Profile = () => {
     const fetchUser = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
+        console.log('No token found for profile fetch');
+        showSnackbar('No authentication token found', 'error');
         navigate('/login', { replace: true });
+        setIsLoading(false);
         return;
       }
       try {
-        const response = await api.getProfile({ headers: { Authorization: `Bearer ${token}` } });
-        setProfileData({
-          ...response,
-          email: response.email || response.username,
-          name: response.name || '',
-          role: response.role || 'user',
+        const decoded = jwtDecode(token);
+        console.log('Decoded token for profile:', decoded);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          showSnackbar('Session expired, please log in', 'error');
+          navigate('/login', { replace: true });
+          setIsLoading(false);
+          return;
+        }
+        if (!decoded.uid) {
+          console.error('No uid in decoded token:', decoded);
+          showSnackbar('Invalid user data in token', 'error');
+          navigate('/login', { replace: true });
+          setIsLoading(false);
+          return;
+        }
+        const response = await api.getProfile({
+          headers: { Authorization: `Bearer ${token}` },
         });
+        console.log('Profile response:', response);
+        const data = response.data.data || response.data;
+        console.log('Profile data:', data);
+        if (!data || Object.keys(data).length === 0 || !data.uid) {
+          console.error('Invalid or empty user data returned from API:', data);
+          showSnackbar('No user data found', 'error');
+          setIsLoading(false);
+          return;
+        }
+        setProfileData({
+          uid: data.uid || '',
+          username: data.username || data.email || '',
+          name: data.name || `${data.first_name || ''} ${data.last_name || ''}`.trim() || '',
+          role: data.role || 'None',
+          first_name: data.first_name || '',
+          last_name: data.last_name || '',
+          academic_title: data.academic_title || '',
+          salutation: data.salutation || '',
+          gender: data.gender || '',
+          phone: data.phone || '',
+          website: data.website || '',
+          employment_start: data.employment_start || '',
+          employment_end: data.employment_end || '',
+          religion: data.religion || '',
+          marital_status: data.marital_status || '',
+          education: data.education || '',
+          date_of_birth: data.date_of_birth || '',
+          place_of_birth: data.place_of_birth || '',
+          country_of_birth: data.country_of_birth || '',
+          birth_name: data.birth_name || '',
+          citizenship: data.citizenship || '',
+          place_of_residence: data.place_of_residence || '',
+          street1: data.street1 || '',
+          street2: data.street2 || '',
+          zip: data.zip || '',
+          city: data.city || '',
+          state: data.state || '',
+          country: data.country || '',
+          bank_name: data.bank_name || '',
+          bank_code_no: data.bank_code_no || '',
+          bank_account_no: data.bank_account_no || '',
+          iban: data.iban || '',
+          swift_bic: data.swift_bic || '',
+          created_at: data.created_at ? new Date(data.created_at * 1000) : null,
+          updated_at: data.updated_at ? new Date(data.updated_at) : null,
+        });
+        setIsLoading(false);
       } catch (err) {
-        console.error('Fetch profile error:', err);
+        console.error('Fetch profile error:', err.response?.data || err.message);
         if (err.response?.status === 401) {
           localStorage.removeItem('token');
           refreshUser();
+          showSnackbar('Unauthorized: Please log in again', 'error');
           navigate('/login', { replace: true });
+        } else if (err.response?.status === 404) {
+          showSnackbar('User profile not found', 'error');
+        } else {
+          showSnackbar('Failed to load profile', 'error');
         }
-        showSnackbar('Failed to load profile', 'error');
+        setIsLoading(false);
       }
     };
-    fetchUser();
-  }, [navigate, refreshUser, showSnackbar]);
+    if (user?.uid) {
+      fetchUser();
+    } else {
+      console.log('No user UID available:', user);
+      showSnackbar('No user data available', 'error');
+      setIsLoading(false);
+    }
+  }, [navigate, refreshUser, showSnackbar, user]);
 
   const handleSave = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showSnackbar('No authentication token found', 'error');
+      navigate('/login', { replace: true });
+      return;
+    }
     try {
-      const token = localStorage.getItem('token');
-      const response = await api.updateProfile(profileData, { headers: { Authorization: `Bearer ${token}` } });
-      localStorage.setItem('token', response.token);
-      refreshUser();
-      setProfileData({ ...response, email: response.email || response.username });
+      await usernameSchema.validate(profileData.username);
+    } catch (validationErr) {
+      showSnackbar(validationErr.message, 'error');
+      return;
+    }
+    try {
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) {
+        localStorage.removeItem('token');
+        showSnackbar('Session expired, please log in', 'error');
+        navigate('/login', { replace: true });
+        return;
+      }
+      const dataToSend = { ...profileData, email: profileData.username, username: profileData.username.toLowerCase() };
+      console.log('Sending profile data for update:', dataToSend);
+      const response = await api.updateProfile(dataToSend, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('Update profile response:', response);
+      const newData = response.data.data || response.data;
+      if (!newData || Object.keys(newData).length === 0 || !newData.uid) {
+        console.error('Invalid or empty user data returned from update:', newData);
+        showSnackbar('Failed to update profile: No user data', 'error');
+        return;
+      }
+      setProfileData({
+        uid: newData.uid || '',
+        username: newData.username || newData.email || '',
+        name: newData.name || `${newData.first_name || ''} ${newData.last_name || ''}`.trim() || '',
+        role: newData.role || 'None',
+        first_name: newData.first_name || '',
+        last_name: newData.last_name || '',
+        academic_title: newData.academic_title || '',
+        salutation: newData.salutation || '',
+        gender: newData.gender || '',
+        phone: newData.phone || '',
+        website: newData.website || '',
+        employment_start: newData.employment_start || '',
+        employment_end: newData.employment_end || '',
+        religion: newData.religion || '',
+        marital_status: newData.marital_status || '',
+        education: newData.education || '',
+        date_of_birth: newData.date_of_birth || '',
+        place_of_birth: newData.place_of_birth || '',
+        country_of_birth: newData.country_of_birth || '',
+        birth_name: newData.birth_name || '',
+        citizenship: newData.citizenship || '',
+        place_of_residence: newData.place_of_residence || '',
+        street1: newData.street1 || '',
+        street2: newData.street2 || '',
+        zip: newData.zip || '',
+        city: newData.city || '',
+        state: newData.state || '',
+        country: newData.country || '',
+        bank_name: newData.bank_name || '',
+        bank_code_no: newData.bank_code_no || '',
+        bank_account_no: newData.bank_account_no || '',
+        iban: newData.iban || '',
+        swift_bic: newData.swift_bic || '',
+        created_at: newData.created_at ? new Date(newData.created_at * 1000) : null,
+        updated_at: newData.updated_at ? new Date(newData.updated_at) : null,
+      });
       showSnackbar('Profile updated successfully', 'success');
       setEditMode(false);
     } catch (err) {
-      console.error('Error updating profile:', err);
-      showSnackbar('Profile not updated', 'error');
+      console.error('Error updating profile:', err.response?.data || err.message);
+      showSnackbar(err.response?.data?.message || 'Profile not updated', 'error');
     }
   };
 
@@ -134,20 +275,48 @@ const Profile = () => {
   };
 
   const handlePasswordSubmit = async (values, { setSubmitting }) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showSnackbar('No authentication token found', 'error');
+      navigate('/login', { replace: true });
+      setSubmitting(false);
+      return;
+    }
     try {
-      const token = localStorage.getItem('token');
-      const response = await api.changePassword({ password: values.password }, { headers: { Authorization: `Bearer ${token}` } });
-      localStorage.setItem('token', response.token);
-      refreshUser();
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) {
+        localStorage.removeItem('token');
+        showSnackbar('Session expired, please log in', 'error');
+        navigate('/login', { replace: true });
+        setSubmitting(false);
+        return;
+      }
+      await api.changePassword({ password: values.password }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       showSnackbar('Password changed successfully', 'success');
+      setSubmitting(false);
     } catch (err) {
-      console.error('Password change error:', err.response || err.message);
-      showSnackbar('Password not updated', 'error');
+      console.error('Password change error:', err.response?.data || err.message);
+      showSnackbar(err.response?.data?.message || 'Password not updated', 'error');
       setSubmitting(false);
     }
   };
 
-  if (!user || !profileData) return null;
+  if (isLoading) {
+    return <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} />;
+  }
+
+  if (!user || !profileData) {
+    return (
+      <Box sx={{ textAlign: 'center', mt: 4 }}>
+        <Typography color="error">Failed to load user data. Please try logging in again.</Typography>
+        <Button variant="contained" onClick={() => navigate('/login')} sx={{ mt: 2 }}>
+          Go to Login
+        </Button>
+      </Box>
+    );
+  }
 
   const isUS = profileData.country === 'United States of America (the)';
 
@@ -197,10 +366,10 @@ const Profile = () => {
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
           <Avatar
             sx={{ width: 120, height: 120, fontSize: 48 }}
-            alt={profileData.name}
+            alt={profileData.name || 'User'}
             src="/placeholder-avatar.jpg"
           >
-            {profileData.name.charAt(0)}
+            {profileData.name?.charAt(0) || ''}
           </Avatar>
         </Box>
 
@@ -222,18 +391,17 @@ const Profile = () => {
               <TextField
                 label="Display Name"
                 fullWidth
-                value={profileData.name}
+                value={profileData.name || ''}
                 onChange={handleChange('name')}
                 disabled={!editMode}
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Email"
-                type="email"
+                label="User name (email)"
                 fullWidth
-                value={profileData.email}
-                onChange={handleChange('email')}
+                value={profileData.username || ''}
+                onChange={handleChange('username')}
                 disabled={!editMode}
               />
             </Grid>
@@ -241,7 +409,7 @@ const Profile = () => {
               <TextField
                 label="Role"
                 fullWidth
-                value={profileData.role}
+                value={profileData.role || 'None'}
                 disabled
               />
             </Grid>
@@ -258,7 +426,7 @@ const Profile = () => {
               <TextField
                 label="First Name"
                 fullWidth
-                value={profileData.first_name}
+                value={profileData.first_name || ''}
                 onChange={handleChange('first_name')}
                 disabled={!editMode}
               />
@@ -267,7 +435,7 @@ const Profile = () => {
               <TextField
                 label="Last Name"
                 fullWidth
-                value={profileData.last_name}
+                value={profileData.last_name || ''}
                 onChange={handleChange('last_name')}
                 disabled={!editMode}
               />
@@ -276,7 +444,7 @@ const Profile = () => {
               <TextField
                 label="Phone"
                 fullWidth
-                value={profileData.phone}
+                value={profileData.phone || ''}
                 onChange={handleChange('phone')}
                 disabled={!editMode}
               />
@@ -285,7 +453,7 @@ const Profile = () => {
               <TextField
                 label="Website"
                 fullWidth
-                value={profileData.website}
+                value={profileData.website || ''}
                 onChange={handleChange('website')}
                 disabled={!editMode}
               />
@@ -349,7 +517,7 @@ const Profile = () => {
               <TextField
                 label="Street 1"
                 fullWidth
-                value={profileData.street1}
+                value={profileData.street1 || ''}
                 onChange={handleChange('street1')}
                 disabled={!editMode}
               />
@@ -358,7 +526,7 @@ const Profile = () => {
               <TextField
                 label="Street 2"
                 fullWidth
-                value={profileData.street2}
+                value={profileData.street2 || ''}
                 onChange={handleChange('street2')}
                 disabled={!editMode}
               />
@@ -367,7 +535,7 @@ const Profile = () => {
               <TextField
                 label="ZIP"
                 fullWidth
-                value={profileData.zip}
+                value={profileData.zip || ''}
                 onChange={handleChange('zip')}
                 disabled={!editMode}
               />
@@ -376,7 +544,7 @@ const Profile = () => {
               <TextField
                 label="City"
                 fullWidth
-                value={profileData.city}
+                value={profileData.city || ''}
                 onChange={handleChange('city')}
                 disabled={!editMode}
               />
@@ -403,7 +571,7 @@ const Profile = () => {
                 <TextField
                   label="State"
                   fullWidth
-                  value={profileData.state}
+                  value={profileData.state || ''}
                   onChange={handleChange('state')}
                   disabled={!editMode}
                 />
@@ -442,7 +610,7 @@ const Profile = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={profileData.employment_start}
+                value={profileData.employment_start || ''}
                 onChange={handleChange('employment_start')}
                 disabled={!editMode}
               />
@@ -453,7 +621,7 @@ const Profile = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={profileData.employment_end}
+                value={profileData.employment_end || ''}
                 onChange={handleChange('employment_end')}
                 disabled={!editMode}
               />
@@ -462,7 +630,7 @@ const Profile = () => {
               <TextField
                 label="Religion"
                 fullWidth
-                value={profileData.religion}
+                value={profileData.religion || ''}
                 onChange={handleChange('religion')}
                 disabled={!editMode}
               />
@@ -488,7 +656,7 @@ const Profile = () => {
               <TextField
                 label="Education"
                 fullWidth
-                value={profileData.education}
+                value={profileData.education || ''}
                 onChange={handleChange('education')}
                 disabled={!editMode}
               />
@@ -499,7 +667,7 @@ const Profile = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={profileData.date_of_birth}
+                value={profileData.date_of_birth || ''}
                 onChange={handleChange('date_of_birth')}
                 disabled={!editMode}
               />
@@ -508,7 +676,7 @@ const Profile = () => {
               <TextField
                 label="Place of Birth"
                 fullWidth
-                value={profileData.place_of_birth}
+                value={profileData.place_of_birth || ''}
                 onChange={handleChange('place_of_birth')}
                 disabled={!editMode}
               />
@@ -535,7 +703,7 @@ const Profile = () => {
               <TextField
                 label="Birth Name"
                 fullWidth
-                value={profileData.birth_name}
+                value={profileData.birth_name || ''}
                 onChange={handleChange('birth_name')}
                 disabled={!editMode}
               />
@@ -562,7 +730,7 @@ const Profile = () => {
               <TextField
                 label="Place of Residence"
                 fullWidth
-                value={profileData.place_of_residence}
+                value={profileData.place_of_residence || ''}
                 onChange={handleChange('place_of_residence')}
                 disabled={!editMode}
               />
@@ -580,7 +748,7 @@ const Profile = () => {
               <TextField
                 label="Bank Name"
                 fullWidth
-                value={profileData.bank_name}
+                value={profileData.bank_name || ''}
                 onChange={handleChange('bank_name')}
                 disabled={!editMode}
               />
@@ -589,7 +757,7 @@ const Profile = () => {
               <TextField
                 label="Bank Code No."
                 fullWidth
-                value={profileData.bank_code_no}
+                value={profileData.bank_code_no || ''}
                 onChange={handleChange('bank_code_no')}
                 disabled={!editMode}
               />
@@ -598,7 +766,7 @@ const Profile = () => {
               <TextField
                 label="Bank Account No."
                 fullWidth
-                value={profileData.bank_account_no}
+                value={profileData.bank_account_no || ''}
                 onChange={handleChange('bank_account_no')}
                 disabled={!editMode}
               />
@@ -607,7 +775,7 @@ const Profile = () => {
               <TextField
                 label="IBAN"
                 fullWidth
-                value={profileData.iban}
+                value={profileData.iban || ''}
                 onChange={handleChange('iban')}
                 disabled={!editMode}
               />
@@ -616,7 +784,7 @@ const Profile = () => {
               <TextField
                 label="SWIFT/BIC"
                 fullWidth
-                value={profileData.swift_bic}
+                value={profileData.swift_bic || ''}
                 onChange={handleChange('swift_bic')}
                 disabled={!editMode}
               />

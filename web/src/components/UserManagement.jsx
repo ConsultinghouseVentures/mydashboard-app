@@ -1,5 +1,5 @@
 // src/components/UserManagement.jsx
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutTableOverview, LayoutContext } from './Layout_TableOverview.jsx';
 import {
@@ -17,6 +17,10 @@ import TableLightbox from './TableLightbox';
 import { useSnackbar } from '../context/SnackbarContext';
 import { useUser } from '../context/UserContext';
 import { useUserRoles } from '../constants/roles';
+import jwtDecode from 'jwt-decode';
+import * as Yup from 'yup';
+
+const usernameSchema = Yup.string().email('Invalid email address').required('User name (email) is required');
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -51,6 +55,7 @@ const UserManagement = () => {
   const { roles, loading: rolesLoading, error: rolesError } = useUserRoles();
   const [users, setUsers] = useState([]);
   const [permissions, setPermissions] = useState({ users: { access: {} }, clients: { access: {} }, employees: { access: {} } });
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [error, setError] = useState(null);
   const [savedViews, setSavedViews] = useState(() => JSON.parse(localStorage.getItem('userViews')) || []);
@@ -68,13 +73,52 @@ const UserManagement = () => {
   const [addFormData, setAddFormData] = useState({
     first_name: '',
     last_name: '',
-    email: '',
+    username: '',
     password: '',
     status: 'Active',
     role: 'User',
+    name: '',
   });
   const [addLoading, setAddLoading] = useState(false);
-  const [columnsConfig, setColumnsConfig] = useState([
+  const [loading, setLoading] = useState(true);
+
+  // Debug logs
+  useEffect(() => {
+    console.log('User:', user);
+    console.log('Permissions:', permissions);
+    console.log('Roles:', roles);
+  }, [user, permissions, roles]);
+
+  const userRole = useMemo(() => {
+    if (user?.role) return user.role;
+    if (user?.roles && Array.isArray(user.roles) && user.roles.length > 0) return user.roles[0];
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        return decoded.roles && Array.isArray(decoded.roles) && decoded.roles.length > 0 ? decoded.roles[0] : null;
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return null;
+  }, [user]);
+
+  const hasViewUsers = useMemo(() => {
+    const token = localStorage.getItem('token');
+    let tokenHasAdmin = false;
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['view_users'] === true;
+  }, [userRole, permissions]);
+
+  const columnsConfig = useMemo(() => [
     {
       field: 'last_name',
       headerName: 'Last Name',
@@ -98,7 +142,7 @@ const UserManagement = () => {
             navigate(`/users/${params.row?.uid}`);
           }}
         >
-          {params.value}
+          {params.value || ''}
         </Typography>
       ),
     },
@@ -125,28 +169,28 @@ const UserManagement = () => {
             navigate(`/users/${params.row?.uid}`);
           }}
         >
-          {params.value}
+          {params.value || ''}
         </Typography>
       ),
     },
     {
-      field: 'email',
-      headerName: 'Email',
+      field: 'username',
+      headerName: 'User name (email)',
       flex: 1,
       minWidth: 200,
       visible: true,
     },
     {
-      field: 'roles',
-      headerName: 'User Roles',
+      field: 'role',
+      headerName: 'User Role',
       flex: 1,
       minWidth: 120,
       visible: true,
-      editable: permissions.users?.access[user?.roles?.[0]]?.['write:users'] ?? false,
+      editable: userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['assign_roles'] === true,
       type: 'singleSelect',
       valueOptions: roles.map(role => role.value),
-      valueGetter: (params) => params.row?.roles?.[0] || '',
-      renderCell: (params) => params.row?.roles?.join(', ') || '',
+      valueGetter: (params) => params.row?.role || '',
+      renderCell: (params) => params.row?.role || 'None',
     },
     {
       field: 'status',
@@ -154,7 +198,7 @@ const UserManagement = () => {
       flex: 1,
       minWidth: 120,
       visible: true,
-      editable: permissions.users?.access[user?.roles?.[0]]?.['write:users'] ?? false,
+      editable: userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['edit_users'] === true,
       type: 'singleSelect',
       valueOptions: ['Active', 'Inactive'],
     },
@@ -204,7 +248,7 @@ const UserManagement = () => {
               setSelectedUser(params.row);
               setLightboxMode('edit');
             }}
-            disabled={!(permissions.users?.access[user?.roles?.[0]]?.['write:users'] ?? false)}
+            disabled={!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['edit_users'] === true)}
           >
             Edit
           </Button>
@@ -216,86 +260,126 @@ const UserManagement = () => {
               setActionsAnchorEl(event.currentTarget);
               setUserToDelete(params.row);
             }}
-            disabled={!(permissions.users?.access[user?.roles?.[0]]?.['delete:users'] ?? false)}
+            disabled={!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['delete_users'] === true)}
           >
             Actions
           </Button>
         </Box>
       ),
     },
-  ]);
+  ], [permissions, userRole, roles]);
 
   // Fetch permissions
   useEffect(() => {
     const fetchPermissions = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
-        setError('No authentication token found');
+        console.error('No token found for permissions fetch');
+        showSnackbar('No authentication token found', 'error');
         navigate('/login', { replace: true });
+        setPermissionsLoading(false);
         return;
       }
       try {
-        const response = await api.get('/api/permissions/permissions-matrix', {
+        const decoded = jwtDecode(token);
+        console.log('Decoded token for permissions:', decoded);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          showSnackbar('Session expired, please log in', 'error');
+          navigate('/login', { replace: true });
+          setPermissionsLoading(false);
+          return;
+        }
+        const response = await api.get('/permissions/permissions-matrix', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setPermissions(response.moduleData || { users: { access: {} }, clients: { access: {} }, employees: { access: {} } });  // Adjusted for backend response and fallback
+        console.log('Permissions response:', response);
+        setPermissions(response.data?.moduleData || { users: { access: {} }, clients: { access: {} }, employees: { access: {} } });
       } catch (err) {
-        console.error('Fetch permissions error:', err);
-        setError('Failed to load permissions');
+        console.error('Fetch permissions error:', err, err.response?.data);
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          localStorage.removeItem('token');
+          showSnackbar('Unauthorized: Please log in again', 'error');
+          navigate('/login', { replace: true });
+        } else {
+          showSnackbar('Failed to load permissions', 'error');
+          setPermissions({
+            users: { access: { Admin: { view_users: true, edit_users: true, assign_roles: true, add_users: true, delete_users: true } } },
+            clients: { access: { Admin: { view_clients: true, edit_clients: true } } },
+            employees: { access: { Admin: { view_employees: true, edit_employees: true } } },
+          });
+        }
+      } finally {
+        setPermissionsLoading(false);
       }
     };
     fetchPermissions();
-  }, [navigate]);
+  }, [navigate, showSnackbar]);
 
-  // Fetch users
+  // Fetch users after permissions loaded
   useEffect(() => {
+    if (permissionsLoading) return;
+
     const fetchUsers = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
-        console.log('No token, redirecting to login');
+        console.error('No token found for users fetch');
+        showSnackbar('No authentication token found', 'error');
         navigate('/login', { replace: true });
         return;
       }
+      setLoading(true);
       try {
-        const response = await api.get('/api/users', {
+        const decoded = jwtDecode(token);
+        console.log('Decoded token for users:', decoded);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          showSnackbar('Session expired, please log in', 'error');
+          navigate('/login', { replace: true });
+          return;
+        }
+        const response = await api.get('/users', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        console.log('Users API full response:', response);
-        const data = Array.isArray(response) ? response : Array.isArray(response.data) ? response.data : [];
-        console.log('Users API response data:', data);
+        console.log('Users API response:', response);
+        const data = response.data?.data || response.data || [];
+        console.log('Fetched users data:', data);
         const formattedData = data.map((row) => ({
           ...row,
-          created_at: row.created_at ? new Date(row.created_at * 1000) : null, // Convert Unix timestamp
+          username: row.username || row.email || '',
+          created_at: row.created_at ? new Date(row.created_at * 1000) : null,
           updated_at: row.updated_at ? new Date(row.updated_at) : null,
-          roles: row.roles || [row.role || 'User'], // Fallback to single role if array not present
+          role: row.role || '',
+          name: row.name || `${row.first_name || ''} ${row.last_name || ''}`.trim() || '',
         }));
-        console.log('Setting users:', formattedData);
         setUsers(formattedData);
         setError(null);
       } catch (error) {
         console.error('Fetch users error:', {
           message: error.message,
-          response: error.response
-            ? {
-                status: error.response.status,
-                data: error.response.data,
-              }
-            : 'No response data',
+          response: error.response ? { status: error.response.status, data: error.response.data } : 'No response data',
         });
-        setError(error.response?.data?.message || 'Failed to fetch users');
         if (error.response?.status === 401) {
-          console.log('Unauthorized, redirecting to login');
           localStorage.removeItem('token');
+          showSnackbar('Unauthorized: Please log in again', 'error');
           navigate('/login', { replace: true });
+        } else {
+          showSnackbar('Failed to fetch users, please try again', 'error');
+          setError('Failed to fetch users');
         }
+      } finally {
+        setLoading(false);
       }
     };
-    if (permissions.users?.access[user?.roles?.[0]]?.['view_users'] ?? true) { // Updated to match DB permission name
+
+    if (hasViewUsers) {
+      setError(null);
       fetchUsers();
     } else {
-      setError('Permission denied to view users');
+      showSnackbar('Permission denied to view users', 'error');
+      navigate('/dashboard', { replace: true });
     }
-  }, [navigate, user?.roles, permissions]);
+  }, [permissionsLoading, hasViewUsers, navigate, showSnackbar]);
 
   useEffect(() => {
     localStorage.setItem('userViews', JSON.stringify(savedViews));
@@ -311,20 +395,21 @@ const UserManagement = () => {
     ));
   };
 
-  const getFilteredUsers = () => {
+  const getFilteredUsers = useMemo(() => {
     const searchFilter = (user) => {
       if (!filter) return true;
       const search = filter.toLowerCase().trim();
       return (
         user.last_name?.toLowerCase()?.includes(search) ||
         user.first_name?.toLowerCase()?.includes(search) ||
-        user.email?.toLowerCase()?.includes(search) ||
-        user.roles?.some(role => role.toLowerCase().includes(search)) ||
-        user.status?.toLowerCase()?.includes(search)
+        user.username?.toLowerCase()?.includes(search) ||
+        user.role?.toLowerCase()?.includes(search) ||
+        user.status?.toLowerCase()?.includes(search) ||
+        user.name?.toLowerCase()?.includes(search)
       );
     };
     return applyFilterRules(users, filterRules, searchFilter);
-  };
+  }, [users, filterRules, filter]);
 
   const handleFilterClick = (event) => {
     if (anchorEl) {
@@ -358,27 +443,46 @@ const UserManagement = () => {
   };
 
   const handleSaveEdit = async (updatedData) => {
-    if (!(permissions.users?.access[user?.roles?.[0]]?.['edit_users'] ?? false)) { // Updated to match DB
+    if (!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['edit_users'] === true)) {
       showSnackbar('Permission denied to edit users', 'error');
       return;
     }
     const token = localStorage.getItem('token');
     if (!token) {
-      console.error('No token found');
       showSnackbar('No authentication token found', 'error');
+      navigate('/login', { replace: true });
+      return;
+    }
+    try {
+      await usernameSchema.validate(updatedData.username);
+    } catch (validationErr) {
+      showSnackbar(validationErr.message, 'error');
       return;
     }
     try {
       console.log('Saving data:', updatedData);
-      const response = await api.put(`/api/users/${updatedData.uid}`, updatedData, {
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) {
+        localStorage.removeItem('token');
+        showSnackbar('Session expired, please log in', 'error');
+        navigate('/login', { replace: true });
+        return;
+      }
+      const dataToSend = { ...updatedData, email: updatedData.username };
+      const response = await api.put(`/users/${updatedData.uid}`, dataToSend, {
         headers: { Authorization: `Bearer ${token}` },
       });
       console.log('API response:', response);
-      const newData = response.data;
-      if (!newData || !newData.uid) {
-        throw new Error('Invalid response data');
+      let newData = response.data?.data || response.data;
+      if (!newData) {
+        throw new Error('No response data');
       }
-      setUsers((prev) => prev.map((c) => (c.uid === newData.uid ? { ...newData, created_at: newData.created_at ? new Date(newData.created_at * 1000) : null, updated_at: newData.updated_at ? new Date(newData.updated_at) : null } : c)));
+      setUsers((prev) => prev.map((c) => (c.uid === newData.uid ? {
+        ...newData,
+        created_at: newData.created_at ? new Date(newData.created_at * 1000) : null,
+        updated_at: newData.updated_at ? new Date(newData.updated_at) : null,
+        name: newData.name || `${newData.first_name || ''} ${newData.last_name || ''}`.trim() || '',
+      } : c)));
       setSelectedUser(null);
       showSnackbar('User updated successfully', 'success');
       return newData;
@@ -390,18 +494,24 @@ const UserManagement = () => {
   };
 
   const handleDelete = async () => {
-    if (!(permissions.users?.access[user?.roles?.[0]]?.['delete:users'] ?? false)) { // Update if DB has 'delete_users'
+    if (!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['delete_users'] === true)) {
       showSnackbar('Permission denied to delete users', 'error');
       return;
     }
     const token = localStorage.getItem('token');
     if (!token || !userToDelete) {
-      console.error('No token or user to delete');
       showSnackbar('No authentication token or user selected', 'error');
       return;
     }
     try {
-      await api.delete(`/api/users/${userToDelete.uid}`, {
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) {
+        localStorage.removeItem('token');
+        showSnackbar('Session expired, please log in', 'error');
+        navigate('/login', { replace: true });
+        return;
+      }
+      await api.delete(`/users/${userToDelete.uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setUsers((prev) => prev.filter((u) => u.uid !== userToDelete.uid));
@@ -417,30 +527,36 @@ const UserManagement = () => {
   };
 
   const handleCellEditCommit = async (params) => {
-    if (!(permissions.users?.access[user?.roles?.[0]]?.['edit_users'] ?? false)) { // Updated to match DB
+    if (!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['edit_users'] === true)) {
       showSnackbar('Permission denied to edit users', 'error');
       return;
     }
     const { id, field, value } = params;
     const updatedUser = users.find((user) => user.uid === id);
-    if (updatedUser && (field === 'status' || field === 'roles')) {
+    if (updatedUser && (field === 'status' || field === 'role')) {
       try {
         const token = localStorage.getItem('token');
-        if (field === 'roles') {
-          await api.post('/api/user-roles', { user_id: id, role_name: value }, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-        } else {
-          const updatedData = { ...updatedUser, [field]: value };
-          await api.put(`/api/users/${id}`, updatedData, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+        const decoded = jwtDecode(token);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          showSnackbar('Session expired, please log in', 'error');
+          navigate('/login', { replace: true });
+          return;
         }
-        const response = await api.get(`/api/users/${id}`, {
+        const updatedData = { ...updatedUser, [field]: value };
+        const response = await api.put(`/users/${id}`, updatedData, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const newData = response.data;
-        setUsers((prev) => prev.map((c) => (c.uid === newData.uid ? { ...newData, created_at: newData.created_at ? new Date(newData.created_at * 1000) : null, updated_at: newData.updated_at ? new Date(newData.updated_at) : null } : c)));
+        const newData = response.data?.data || response.data;
+        if (!newData) {
+          throw new Error('No response data');
+        }
+        setUsers((prev) => prev.map((c) => (c.uid === newData.uid ? {
+          ...newData,
+          created_at: newData.created_at ? new Date(newData.created_at * 1000) : null,
+          updated_at: newData.updated_at ? new Date(newData.updated_at) : null,
+          name: newData.name || `${newData.first_name || ''} ${newData.last_name || ''}`.trim() || '',
+        } : c)));
         showSnackbar('User updated successfully', 'success');
       } catch (err) {
         console.error('Inline edit error:', err);
@@ -452,17 +568,17 @@ const UserManagement = () => {
 
   const processRowUpdate = (newRow, oldRow) => {
     const updatedRow = { ...newRow };
-    if (newRow.status !== oldRow.status || newRow.roles?.[0] !== oldRow.roles?.[0]) {
+    if (newRow.status !== oldRow.status || newRow.role !== oldRow.role) {
       handleCellEditCommit({ id: newRow.uid, field: 'status', value: newRow.status });
-      if (newRow.roles?.[0] !== oldRow.roles?.[0]) {
-        handleCellEditCommit({ id: newRow.uid, field: 'roles', value: newRow.roles?.[0] });
+      if (newRow.role !== oldRow.role) {
+        handleCellEditCommit({ id: newRow.uid, field: 'role', value: newRow.role });
       }
     }
     return updatedRow;
   };
 
   const handleNewUser = () => {
-    if (!(permissions.users?.access[user?.roles?.[0]]?.['add:users'] ?? false)) {
+    if (!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['add_users'] === true)) {
       showSnackbar('Permission denied to add users', 'error');
       return;
     }
@@ -475,22 +591,34 @@ const UserManagement = () => {
   };
 
   const handleAddSubmit = async () => {
-    if (!(permissions.users?.access[user?.roles?.[0]]?.['add:users'] ?? false)) {
+    if (!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['add_users'] === true)) {
       showSnackbar('Permission denied to add users', 'error');
       return;
     }
     setAddLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const response = await api.post('/api/users', addFormData, {
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) {
+        localStorage.removeItem('token');
+        showSnackbar('Session expired, please log in', 'error');
+        navigate('/login', { replace: true });
+        return;
+      }
+      const response = await api.post('/users', addFormData, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      const newData = response.data?.data || response.data;
+      if (!newData) {
+        throw new Error('No response data');
+      }
       showSnackbar('User added successfully', 'success');
       setUsers((prev) => [...prev, {
-        ...response.data,
-        created_at: response.data.created_at ? new Date(response.data.created_at * 1000) : null,
-        updated_at: response.data.updated_at ? new Date(response.data.updated_at) : null,
-        roles: response.data.roles || ['User'],
+        ...newData,
+        created_at: newData.created_at ? new Date(newData.created_at * 1000) : null,
+        updated_at: newData.updated_at ? new Date(newData.updated_at) : null,
+        role: newData.role || '',
+        name: newData.name || `${newData.first_name || ''} ${newData.last_name || ''}`.trim() || '',
       }]);
       setOpenAddDialog(false);
       setAddFormData({
@@ -500,6 +628,7 @@ const UserManagement = () => {
         password: '',
         status: 'Active',
         role: 'User',
+        name: '',
       });
     } catch (err) {
       console.error('Add user error:', err);
@@ -509,19 +638,20 @@ const UserManagement = () => {
     }
   };
 
-  const filteredUsers = getFilteredUsers();
-
-  console.log('Users state:', users);
-  console.log('Filter:', filter);
-  console.log('Filter rules:', filterRules);
-  console.log('Filtered users:', filteredUsers);
-
-  if (rolesLoading) {
+  if (rolesLoading || permissionsLoading) {
     return <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} />;
   }
 
   if (rolesError) {
-    return <Typography color="error" sx={{ mt: 4 }}>{rolesError}</Typography>;
+    showSnackbar(rolesError, 'error');
+    return (
+      <Box sx={{ mt: 4, textAlign: 'center' }}>
+        <Typography color="error">{rolesError}</Typography>
+        <Button variant="contained" onClick={() => navigate('/dashboard')} sx={{ mt: 2 }}>
+          Go to Dashboard
+        </Button>
+      </Box>
+    );
   }
 
   return (
@@ -562,7 +692,7 @@ const UserManagement = () => {
                   size="small"
                   startIcon={<AddIcon />}
                   onClick={handleNewUser}
-                  disabled={!(permissions.users?.access[user?.roles?.[0]]?.['add:users'] ?? false)}
+                  disabled={!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['add_users'] === true)}
                 >
                   New User
                 </Button>
@@ -593,24 +723,32 @@ const UserManagement = () => {
                 {error}
               </Typography>
             )}
-            <Box sx={{ minHeight: '400px', width: '100%' }}>  
-              <DataGrid
-                rows={filteredUsers}
-                columns={columnsConfig.filter((col) => col.visible)}
-                getRowId={(row) => row.uid}
-                pageSizeOptions={[5, 10, 20, 100]}
-                onCellEditCommit={handleCellEditCommit}
-                processRowUpdate={processRowUpdate}
-                editMode="cell"
-                sx={{
-                  width: '100%',  // Ensure full width
-                  ...tableStyles,
-                  '& .MuiDataGrid-row': {
-                    position: 'relative',
-                  },
-                }}
-                disableSelectionOnClick
-              />
+            <Box sx={{ height: 'calc(100% - 150px)', width: '100%' }}>
+              {loading ? (
+                <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} />
+              ) : users.length === 0 ? (
+                <Typography sx={{ textAlign: 'center', mt: 4 }}>
+                  No users found
+                </Typography>
+              ) : (
+                <DataGrid
+                  rows={getFilteredUsers}
+                  columns={columnsConfig.filter((col) => col.visible)}
+                  getRowId={(row) => row.uid}
+                  pageSizeOptions={[5, 10, 20, 100]}
+                  onCellEditCommit={handleCellEditCommit}
+                  processRowUpdate={processRowUpdate}
+                  editMode="row"
+                  sx={{
+                    width: '100%',
+                    ...tableStyles,
+                    '& .MuiDataGrid-row': {
+                      position: 'relative',
+                    },
+                  }}
+                  disableSelectionOnClick
+                />
+              )}
             </Box>
             <Menu
               anchorEl={actionsAnchorEl}
@@ -622,7 +760,7 @@ const UserManagement = () => {
                   setOpenDeleteDialog(true);
                   setActionsAnchorEl(null);
                 }}
-                disabled={!(permissions.users?.access[user?.roles?.[0]]?.['delete:users'] ?? false)}
+                disabled={!(userRole?.toLowerCase() === 'admin' || permissions.users?.access[userRole]?.['delete_users'] === true)}
               >
                 Delete
               </MenuItem>
@@ -642,17 +780,15 @@ const UserManagement = () => {
             </Dialog>
           </Box>
           <ErrorBoundary>
-            {columnsConfig.length > 0 && (
-              <TableFilterDialog
-                open={Boolean(anchorEl)}
-                anchorEl={anchorEl}
-                columnsConfig={columnsConfig}
-                filterRules={filterRules}
-                setFilterRules={setFilterRules}
-                onClose={handleFilterClose}
-                onFilterClick={handleAddRule}
-              />
-            )}
+            <TableFilterDialog
+              open={Boolean(anchorEl)}
+              anchorEl={anchorEl}
+              columnsConfig={columnsConfig}
+              filterRules={filterRules}
+              setFilterRules={setFilterRules}
+              onClose={handleFilterClose}
+              onFilterClick={handleAddRule}
+            />
           </ErrorBoundary>
           <ErrorBoundary>
             <LayoutLightbox open={openColumnDialog} onClose={() => setOpenColumnDialog(false)}>
@@ -714,9 +850,17 @@ const UserManagement = () => {
             margin="normal"
           />
           <TextField
-            label="Email"
-            name="email"
-            value={addFormData.email}
+            label="Display Name"
+            name="name"
+            value={addFormData.name}
+            onChange={handleAddChange}
+            fullWidth
+            margin="normal"
+          />
+          <TextField
+            label="User name (email)"
+            name="username"
+            value={addFormData.username}
             onChange={handleAddChange}
             fullWidth
             margin="normal"

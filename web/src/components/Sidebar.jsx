@@ -1,5 +1,5 @@
 // src/components/Sidebar.jsx
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import {
   Drawer,
   List,
@@ -36,12 +36,12 @@ const Sidebar = () => {
     clients: { access: {} },
     employees: { access: {} },
   });
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', isCollapsed);
     window.dispatchEvent(new Event('sidebarToggle'));
     console.log('Sidebar rendered, isCollapsed:', isCollapsed);
-    console.log('Rendering support menu items:', ['Profile', 'Logout']);
   }, [isCollapsed]);
 
   useEffect(() => {
@@ -52,21 +52,24 @@ const Sidebar = () => {
         return;
       }
       try {
-        jwtDecode(token); // Validate token locally
-        const response = await api.get('/api/permissions/permissions-matrix', {
+        const decoded = jwtDecode(token);
+        console.log('Decoded token:', decoded);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          refreshUser();
+          navigate('/login', { replace: true });
+          return;
+        }
+        const response = await api.get('/permissions/permissions-matrix', {
           headers: { Authorization: `Bearer ${token}` },
         });
         console.log('Permissions response:', response);
-        if (response.moduleData) {
-          setPermissions(response.moduleData);
-        } else {
-          console.warn('No moduleData in response, using default permissions');
-          setPermissions({
-            users: { access: {} },
-            clients: { access: {} },
-            employees: { access: {} },
-          });
-        }
+        const moduleData = response.data?.moduleData || {
+          users: { access: {} },
+          clients: { access: {} },
+          employees: { access: {} },
+        };
+        setPermissions(moduleData);
       } catch (err) {
         console.error('Fetch permissions error:', err);
         if (err.response?.status === 401 || err.response?.status === 403) {
@@ -74,16 +77,32 @@ const Sidebar = () => {
           refreshUser();
           navigate('/login', { replace: true });
         } else {
-          setPermissions({
-            users: { access: {} },
-            clients: { access: {} },
-            employees: { access: {} },
-          });
+          // Fallback for admins
+          const token = localStorage.getItem('token');
+          let isAdmin = false;
+          if (token) {
+            try {
+              const decoded = jwtDecode(token);
+              isAdmin = decoded.roles?.includes('Admin');
+            } catch (e) {
+              console.error('Token decode error:', e);
+            }
+          }
+          if (isAdmin || user?.role?.toLowerCase() === 'admin') {
+            setPermissions({
+              users: { access: { Admin: { view_users: true, edit_users: true, assign_roles: true, add_users: true, delete_users: true } } },
+              clients: { access: { Admin: { view_clients: true, edit_clients: true } } },
+              employees: { access: { Admin: { view_employees: true, edit_employees: true } } },
+            });
+          }
         }
       }
     };
-    fetchPermissions();
-  }, [navigate, refreshUser]);
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchPermissions();
+    }
+  }, [navigate, refreshUser, user?.role]);
 
   const toggleSidebar = () => {
     console.log('Toggling sidebar, current state:', isCollapsed);
@@ -97,29 +116,39 @@ const Sidebar = () => {
     navigate('/login', { replace: true });
   };
 
-  const hasReadUsers = permissions.users?.access[user?.role]?.['read:users'] ?? true;
-  const hasReadClients = (permissions.clients?.access[user?.role]?.['read:clients'] ?? true) || user?.role.toLowerCase() === 'admin'; // Ensure visible for admin
-  const hasReadEmployees = (permissions.employees?.access[user?.role]?.['read:employees'] ?? true) || user?.role.toLowerCase() === 'admin'; // Ensure visible for admin
+  const token = localStorage.getItem('token');
+  let isAdmin = false;
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      isAdmin = decoded.roles?.includes('Admin') || user?.role?.toLowerCase() === 'admin';
+    } catch (e) {
+      console.error('Token decode error:', e);
+    }
+  }
+  const hasViewUsers = isAdmin || permissions.users?.access[user?.role]?.['view_users'] === true;
+  const hasViewClients = isAdmin || permissions.clients?.access[user?.role]?.['view_clients'] === true;
+  const hasViewEmployees = isAdmin || permissions.employees?.access[user?.role]?.['view_employees'] === true;
 
   const primaryMenuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-    { text: 'Clients', icon: <BusinessIcon />, path: '/clients', visible: hasReadClients },
+    { text: 'Clients', icon: <BusinessIcon />, path: '/clients', visible: hasViewClients },
     {
       text: 'Employees',
       icon: <WorkIcon />,
       path: '/employees',
-      visible: hasReadEmployees && !['employee', 'public user'].includes(user?.role?.toLowerCase() || ''),
+      visible: hasViewEmployees && !['employee', 'public user'].includes(user?.role?.toLowerCase() || ''),
     },
     { text: 'Mini Apps', icon: <AppsIcon />, path: '/miniapps' },
   ];
 
   const supportMenuItems = [
-    ...(user?.role?.toLowerCase() === 'admin'
-      ? [{ text: 'Admin', icon: <AdminIcon />, path: '/admin' }]
-      : []),
+    ...(isAdmin ? [{ text: 'Admin', icon: <AdminIcon />, path: '/admin' }] : []),
     { text: 'Profile', icon: <PersonIcon />, path: '/profile' },
     { text: 'Logout', icon: <ExitToAppIcon />, action: handleLogout },
   ];
+
+  console.log('Rendering support menu items:', supportMenuItems.map(item => item.text));
 
   return (
     <Drawer
@@ -147,7 +176,6 @@ const Sidebar = () => {
     >
       <Box sx={{ flexShrink: 0 }}>
         <Box
-          className="glass-effect-light"
           sx={{
             display: 'flex',
             alignItems: 'center',

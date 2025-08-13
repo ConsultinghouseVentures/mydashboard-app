@@ -1,5 +1,4 @@
-// src/components/EmployeeDetail.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
@@ -58,13 +57,14 @@ const EmployeeDetail = () => {
   const { showSnackbar } = useSnackbar();
   const { roles: USER_ROLES, loading: rolesLoading, error: rolesError } = useUserRoles(); // Use hook for dynamic roles
   const [employeeData, setEmployeeData] = useState(null);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
   const [editMode, setEditMode] = useState(false);
 
   useEffect(() => {
-    const fetchEmployee = async () => {
+    const fetchData = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
         navigate('/login', { replace: true });
@@ -72,29 +72,38 @@ const EmployeeDetail = () => {
       }
       try {
         setLoading(true);
-        const response = await api.get(`/api/employees/${uid}`, { headers: { Authorization: `Bearer ${token}` } });
-        setEmployeeData(response.data || response); // Handle if response is data or wrapped
+        const [employeeResponse, clientsResponse] = await Promise.all([
+          api.get(`/employees/${uid}`, { headers: { Authorization: `Bearer ${token}` } }),
+          api.get('/clients', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const data = employeeResponse.data.data || employeeResponse.data;
+        setEmployeeData({ ...data, role: data.role || data.user_roles?.[0] || '' });
+        const clientsData = Array.isArray(clientsResponse.data.data) ? clientsResponse.data.data : Array.isArray(clientsResponse.data) ? clientsResponse.data : [];
+        setClients(clientsData);
       } catch (err) {
-        console.error('Fetch employee error:', err);
-        setError(err.response?.data?.message || 'Failed to fetch employee details');
+        console.error('Fetch data error:', err);
+        setError(err.response?.data?.message || 'Failed to fetch data');
         if (err.response?.status === 401) {
           localStorage.removeItem('token');
           navigate('/login', { replace: true });
         } else {
-          showSnackbar('Failed to fetch employee details', 'error');
+          showSnackbar('Failed to fetch data', 'error');
         }
       } finally {
         setLoading(false);
       }
     };
-    fetchEmployee();
+    fetchData();
   }, [uid, navigate, showSnackbar]);
 
   const handleSave = async () => {
     const token = localStorage.getItem('token');
     try {
-      const response = await api.put(`/api/employees/${uid}`, employeeData, { headers: { Authorization: `Bearer ${token}` } });
-      setEmployeeData(response.data || response);
+      const payload = { ...employeeData };
+      delete payload.user_roles;
+      const response = await api.put(`/employees/${uid}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+      const data = response.data.data || response.data;
+      setEmployeeData({ ...data, role: data.role || data.user_roles?.[0] || '' });
       setEditMode(false);
       showSnackbar('Employee updated successfully', 'success');
     } catch (err) {
@@ -117,6 +126,10 @@ const EmployeeDetail = () => {
     const value = event.target.value;
     setEmployeeData((prev) => ({ ...prev, [field]: value }));
   };
+
+  const clientName = useMemo(() => {
+    return employeeData?.client_name || 'No Client';
+  }, [employeeData]);
 
   if (loading || rolesLoading) {
     return (
@@ -141,19 +154,13 @@ const EmployeeDetail = () => {
   return (
     <Box
       sx={{
-        p: 2,
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: 'calc(100vh - 64px)',
-        backgroundColor: theme.palette.background.default,
+        p: 3,
+        width: '100%',
       }}
     >
       <Paper
         elevation={3}
         sx={{
-          width: '100%',
-          maxWidth: 950,
           p: 4,
           borderRadius: 4,
           backgroundColor: theme.palette.background.paper,
@@ -162,7 +169,7 @@ const EmployeeDetail = () => {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, justifyContent: 'space-between' }}>
           <Typography variant="h4" component="h1">
-            Employee: {employeeData.name || ''}
+            Employee: {employeeData.name || ''} @ <Typography component="span" sx={{ cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } }} onClick={() => employeeData.client_id && navigate(`/clients/${employeeData.client_id}`)}>{clientName}</Typography>
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             {!editMode ? (
@@ -468,7 +475,7 @@ const EmployeeDetail = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={6}>
               <TextField
                 label="Education"
                 fullWidth
@@ -476,6 +483,24 @@ const EmployeeDetail = () => {
                 onChange={handleChange('education')}
                 disabled={!editMode}
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Client</InputLabel>
+                <Select
+                  value={employeeData.client_id || ''}
+                  label="Client"
+                  onChange={handleSelectChange('client_id')}
+                  disabled={!editMode}
+                >
+                  <MenuItem value="">None</MenuItem>
+                  {clients.map((client) => (
+                    <MenuItem key={client.uid} value={client.uid}>
+                      {client.client_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

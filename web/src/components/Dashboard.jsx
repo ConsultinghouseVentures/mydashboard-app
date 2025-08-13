@@ -1,7 +1,7 @@
 // src/components/Dashboard.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Typography, Container, Box, Button } from '@mui/material';
+import { Typography, Container, Box } from '@mui/material';
 import { useUser } from '../context/UserContext';
 
 const Dashboard = () => {
@@ -11,16 +11,10 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (user) {
-      setDisplayName(user.name || (user.username ? user.username.split('@')[0] : 'User'));
+      const name = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim();
+      setDisplayName(name || (user.username ? user.username.split('@')[0] : 'User'));
     }
   }, [user]);
-
-  const handleLogout = () => {
-    console.log('Dashboard logout triggered');
-    localStorage.removeItem('token');
-    refreshUser();
-    navigate('/login', { replace: true });
-  };
 
   return (
     <Container
@@ -32,11 +26,6 @@ const Dashboard = () => {
         <Typography variant="h4" component="h1" gutterBottom sx={{ textAlign: 'left' }}>
           Welcome back, {displayName || 'User'}!
         </Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" color="secondary" onClick={handleLogout}>
-            Logout
-          </Button>
-        </Box>
       </Box>
     </Container>
   );
