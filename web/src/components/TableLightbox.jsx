@@ -1,4 +1,4 @@
-// src/components/TableLightbox.jsx
+// web/src/components/TableLightbox.jsx
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -18,9 +18,9 @@ import {
   Divider,
 } from '@mui/material';
 import { Edit } from '@mui/icons-material';
-import LayoutLightbox from './Layout_Lightbox.jsx';
+import LayoutLightbox from './Layout_Lightbox';
 import { useSnackbar } from '../context/SnackbarContext';
-import { countries } from '../constants/countries';
+import { countries } from '../data/countries';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -90,8 +90,7 @@ const TableLightbox = ({
 
   if (!open || !currentData) return null;
 
-  const isUS = currentData.country === 'United States of America (the)';
-
+  const isUS = currentData.address_country === 'United States of America';
   const roleOptions = columnsConfig.find(col => col.field === 'role')?.valueOptions || [];
   const statusOptions = columnsConfig.find(col => col.field === 'status')?.valueOptions || [];
 
@@ -104,7 +103,7 @@ const TableLightbox = ({
       }}
     >
       <DialogTitle>
-        {currentMode === 'view' ? 'View Details' : 'Edit Details'}
+        {currentMode === 'view' ? 'View Client Details' : 'Edit Client Details'}
       </DialogTitle>
       <DialogContent sx={{ overflowY: 'auto', maxHeight: 'calc(80vh - 120px)' }}>
         {currentMode === 'view' && (
@@ -128,83 +127,29 @@ const TableLightbox = ({
           </Box>
         )}
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} centered>
-          <Tab label="Login" />
-          <Tab label="Personal" />
-          <Tab label="Payroll" />
-          <Tab label="Bank" />
+          <Tab label="General" />
+          <Tab label="Address" />
+          <Tab label="Contact" />
         </Tabs>
         <TabPanel value={tabValue} index={0}>
           <Typography variant="h6" gutterBottom>
-            Login Profile
+            General Information
           </Typography>
           <Divider sx={{ mb: 2 }} />
           <Grid container spacing={3}>
             <Grid item xs={12}>
               {currentMode === 'view' ? (
                 <Box>
-                  <Typography variant="subtitle2">Display Name</Typography>
-                  <Typography variant="body1">{currentData.name || 'N/A'}</Typography>
+                  <Typography variant="subtitle2">Client Name</Typography>
+                  <Typography variant="body1">{currentData.client_name || 'N/A'}</Typography>
                 </Box>
               ) : (
                 <TextField
-                  label="Display Name"
+                  label="Client Name"
                   fullWidth
-                  value={currentData.name || ''}
-                  onChange={(e) => handleFieldChange('name', e.target.value)}
+                  value={currentData.client_name || ''}
+                  onChange={(e) => handleFieldChange('client_name', e.target.value)}
                 />
-              )}
-            </Grid>
-            <Grid item xs={12}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Email</Typography>
-                  <Typography variant="body1">{currentData.email || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Email"
-                  type="email"
-                  fullWidth
-                  value={currentData.email || ''}
-                  onChange={(e) => handleFieldChange('email', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Username</Typography>
-                  <Typography variant="body1">{currentData.username || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Username"
-                  fullWidth
-                  value={currentData.username || ''}
-                  onChange={(e) => handleFieldChange('username', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Role</Typography>
-                  <Typography variant="body1">{currentData.role || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel>Role</InputLabel>
-                  <Select
-                    value={currentData.role || ''}
-                    onChange={(e) => handleFieldChange('role', e.target.value)}
-                  >
-                    {roleOptions.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        {opt}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
               )}
             </Grid>
             <Grid item xs={12}>
@@ -229,45 +174,265 @@ const TableLightbox = ({
                 </FormControl>
               )}
             </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Incorporation Date</Typography>
+                  <Typography variant="body1">{currentData.incorporation_date || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Incorporation Date"
+                  type="date"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  value={currentData.incorporation_date || ''}
+                  onChange={(e) => handleFieldChange('incorporation_date', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Company Form</Typography>
+                  <Typography variant="body1">{currentData.company_form || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Company Form"
+                  fullWidth
+                  value={currentData.company_form || ''}
+                  onChange={(e) => handleFieldChange('company_form', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Industry</Typography>
+                  <Typography variant="body1">{currentData.industry || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Industry"
+                  fullWidth
+                  value={currentData.industry || ''}
+                  onChange={(e) => handleFieldChange('industry', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Business Purpose</Typography>
+                  <Typography variant="body1">{currentData.business_purpose || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Business Purpose"
+                  fullWidth
+                  value={currentData.business_purpose || ''}
+                  onChange={(e) => handleFieldChange('business_purpose', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Number of Employees</Typography>
+                  <Typography variant="body1">{currentData.num_employees || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Number of Employees"
+                  fullWidth
+                  value={currentData.num_employees || ''}
+                  onChange={(e) => handleFieldChange('num_employees', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Annual Revenue</Typography>
+                  <Typography variant="body1">{currentData.annual_revenue || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Annual Revenue"
+                  fullWidth
+                  value={currentData.annual_revenue || ''}
+                  onChange={(e) => handleFieldChange('annual_revenue', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Home Country</Typography>
+                  <Typography variant="body1">{currentData.home_country || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <FormControl fullWidth>
+                  <InputLabel shrink>Home Country</InputLabel>
+                  <Select
+                    value={currentData.home_country || ''}
+                    label="Home Country"
+                    onChange={(e) => handleFieldChange('home_country', e.target.value)}
+                    notched
+                  >
+                    {countries.map((country) => (
+                      <MenuItem key={country} value={country}>
+                        {country}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Remarks</Typography>
+                  <Typography variant="body1">{currentData.remarks || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Remarks"
+                  fullWidth
+                  multiline
+                  value={currentData.remarks || ''}
+                  onChange={(e) => handleFieldChange('remarks', e.target.value)}
+                />
+              )}
+            </Grid>
           </Grid>
         </TabPanel>
         <TabPanel value={tabValue} index={1}>
           <Typography variant="h6" gutterBottom>
-            Personal Information
+            Address Information
           </Typography>
           <Divider sx={{ mb: 2 }} />
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               {currentMode === 'view' ? (
                 <Box>
-                  <Typography variant="subtitle2">First Name</Typography>
-                  <Typography variant="body1">{currentData.first_name || 'N/A'}</Typography>
+                  <Typography variant="subtitle2">Street Address</Typography>
+                  <Typography variant="body1">{currentData.address_street || 'N/A'}</Typography>
                 </Box>
               ) : (
                 <TextField
-                  label="First Name"
+                  label="Street Address"
                   fullWidth
-                  value={currentData.first_name || ''}
-                  onChange={(e) => handleFieldChange('first_name', e.target.value)}
+                  value={currentData.address_street || ''}
+                  onChange={(e) => handleFieldChange('address_street', e.target.value)}
                 />
               )}
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               {currentMode === 'view' ? (
                 <Box>
-                  <Typography variant="subtitle2">Last Name</Typography>
-                  <Typography variant="body1">{currentData.last_name || 'N/A'}</Typography>
+                  <Typography variant="subtitle2">Postal Code</Typography>
+                  <Typography variant="body1">{currentData.address_postal_code || 'N/A'}</Typography>
                 </Box>
               ) : (
                 <TextField
-                  label="Last Name"
+                  label="Postal Code"
                   fullWidth
-                  value={currentData.last_name || ''}
-                  onChange={(e) => handleFieldChange('last_name', e.target.value)}
+                  value={currentData.address_postal_code || ''}
+                  onChange={(e) => handleFieldChange('address_postal_code', e.target.value)}
                 />
               )}
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Locality</Typography>
+                  <Typography variant="body1">{currentData.address_locality || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Locality"
+                  fullWidth
+                  value={currentData.address_locality || ''}
+                  onChange={(e) => handleFieldChange('address_locality', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Country</Typography>
+                  <Typography variant="body1">{currentData.address_country || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <FormControl fullWidth>
+                  <InputLabel shrink>Country</InputLabel>
+                  <Select
+                    value={currentData.address_country || ''}
+                    label="Country"
+                    onChange={(e) => handleFieldChange('address_country', e.target.value)}
+                    notched
+                  >
+                    {countries.map((country) => (
+                      <MenuItem key={country} value={country}>
+                        {country}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            </Grid>
+            {isUS && (
+              <Grid item xs={12}>
+                {currentMode === 'view' ? (
+                  <Box>
+                    <Typography variant="subtitle2">State</Typography>
+                    <Typography variant="body1">{currentData.address_region || 'N/A'}</Typography>
+                  </Box>
+                ) : (
+                  <FormControl fullWidth>
+                    <InputLabel shrink>State</InputLabel>
+                    <Select
+                      value={currentData.address_region || ''}
+                      label="State"
+                      onChange={(e) => handleFieldChange('address_region', e.target.value)}
+                      notched
+                    >
+                      {usStates.map((state) => (
+                        <MenuItem key={state} value={state}>
+                          {state}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              </Grid>
+            )}
+          </Grid>
+        </TabPanel>
+        <TabPanel value={tabValue} index={2}>
+          <Typography variant="h6" gutterBottom>
+            Contact Information
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Managing Director</Typography>
+                  <Typography variant="body1">{currentData.managing_director || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Managing Director"
+                  fullWidth
+                  value={currentData.managing_director || ''}
+                  onChange={(e) => handleFieldChange('managing_director', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
               {currentMode === 'view' ? (
                 <Box>
                   <Typography variant="subtitle2">Phone</Typography>
@@ -282,7 +447,38 @@ const TableLightbox = ({
                 />
               )}
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Fax</Typography>
+                  <Typography variant="body1">{currentData.fax || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Fax"
+                  fullWidth
+                  value={currentData.fax || ''}
+                  onChange={(e) => handleFieldChange('fax', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              {currentMode === 'view' ? (
+                <Box>
+                  <Typography variant="subtitle2">Email</Typography>
+                  <Typography variant="body1">{currentData.email || 'N/A'}</Typography>
+                </Box>
+              ) : (
+                <TextField
+                  label="Email"
+                  type="email"
+                  fullWidth
+                  value={currentData.email || ''}
+                  onChange={(e) => handleFieldChange('email', e.target.value)}
+                />
+              )}
+            </Grid>
+            <Grid item xs={12}>
               {currentMode === 'view' ? (
                 <Box>
                   <Typography variant="subtitle2">Website</Typography>
@@ -294,482 +490,6 @@ const TableLightbox = ({
                   fullWidth
                   value={currentData.website || ''}
                   onChange={(e) => handleFieldChange('website', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Academic Title</Typography>
-                  <Typography variant="body1">{currentData.academic_title || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel shrink>Academic Title</InputLabel>
-                  <Select
-                    value={currentData.academic_title || ''}
-                    label="Academic Title"
-                    onChange={(e) => handleFieldChange('academic_title', e.target.value)}
-                    notched
-                  >
-                    <MenuItem value="">None</MenuItem>
-                    <MenuItem value="Dr.">Dr.</MenuItem>
-                    <MenuItem value="Prof.">Prof.</MenuItem>
-                  </Select>
-                </FormControl>
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Salutation</Typography>
-                  <Typography variant="body1">{currentData.salutation || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel shrink>Salutation</InputLabel>
-                  <Select
-                    value={currentData.salutation || ''}
-                    label="Salutation"
-                    onChange={(e) => handleFieldChange('salutation', e.target.value)}
-                    notched
-                  >
-                    <MenuItem value="Mr.">Mr.</MenuItem>
-                    <MenuItem value="Ms.">Ms.</MenuItem>
-                    <MenuItem value="Mrs.">Mrs.</MenuItem>
-                    <MenuItem value="Other">Other</MenuItem>
-                  </Select>
-                </FormControl>
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Gender</Typography>
-                  <Typography variant="body1">{currentData.gender || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel shrink>Gender</InputLabel>
-                  <Select
-                    value={currentData.gender || ''}
-                    label="Gender"
-                    onChange={(e) => handleFieldChange('gender', e.target.value)}
-                    notched
-                  >
-                    <MenuItem value="Male">Male</MenuItem>
-                    <MenuItem value="Female">Female</MenuItem>
-                    <MenuItem value="Non-binary">Non-binary</MenuItem>
-                    <MenuItem value="Prefer not to say">Prefer not to say</MenuItem>
-                  </Select>
-                </FormControl>
-              )}
-            </Grid>
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>
-                Address
-              </Typography>
-            </Grid>
-            <Grid item xs={12}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Street 1</Typography>
-                  <Typography variant="body1">{currentData.street1 || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Street 1"
-                  fullWidth
-                  value={currentData.street1 || ''}
-                  onChange={(e) => handleFieldChange('street1', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Street 2</Typography>
-                  <Typography variant="body1">{currentData.street2 || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Street 2"
-                  fullWidth
-                  value={currentData.street2 || ''}
-                  onChange={(e) => handleFieldChange('street2', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">ZIP</Typography>
-                  <Typography variant="body1">{currentData.zip || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="ZIP"
-                  fullWidth
-                  value={currentData.zip || ''}
-                  onChange={(e) => handleFieldChange('zip', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">City</Typography>
-                  <Typography variant="body1">{currentData.city || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="City"
-                  fullWidth
-                  value={currentData.city || ''}
-                  onChange={(e) => handleFieldChange('city', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">State</Typography>
-                  <Typography variant="body1">{currentData.state || 'N/A'}</Typography>
-                </Box>
-              ) : isUS ? (
-                <FormControl fullWidth>
-                  <InputLabel shrink>State</InputLabel>
-                  <Select
-                    value={currentData.state || ''}
-                    label="State"
-                    onChange={(e) => handleFieldChange('state', e.target.value)}
-                    notched
-                  >
-                    {usStates.map((state) => (
-                      <MenuItem key={state} value={state}>
-                        {state}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              ) : (
-                <TextField
-                  label="State"
-                  fullWidth
-                  value={currentData.state || ''}
-                  onChange={(e) => handleFieldChange('state', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Country</Typography>
-                  <Typography variant="body1">{currentData.country || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel shrink>Country</InputLabel>
-                  <Select
-                    value={currentData.country || ''}
-                    label="Country"
-                    onChange={(e) => handleFieldChange('country', e.target.value)}
-                    notched
-                  >
-                    {countries.map((country) => (
-                      <MenuItem key={country} value={country}>
-                        {country}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-            </Grid>
-          </Grid>
-        </TabPanel>
-        <TabPanel value={tabValue} index={2}>
-          <Typography variant="h6" gutterBottom>
-            Payroll Details
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Employment Start</Typography>
-                  <Typography variant="body1">{currentData.employment_start || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Employment Start"
-                  type="date"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={currentData.employment_start || ''}
-                  onChange={(e) => handleFieldChange('employment_start', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Employment End</Typography>
-                  <Typography variant="body1">{currentData.employment_end || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Employment End"
-                  type="date"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={currentData.employment_end || ''}
-                  onChange={(e) => handleFieldChange('employment_end', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Religion</Typography>
-                  <Typography variant="body1">{currentData.religion || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Religion"
-                  fullWidth
-                  value={currentData.religion || ''}
-                  onChange={(e) => handleFieldChange('religion', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Marital Status</Typography>
-                  <Typography variant="body1">{currentData.marital_status || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel shrink>Marital Status</InputLabel>
-                  <Select
-                    value={currentData.marital_status || ''}
-                    label="Marital Status"
-                    onChange={(e) => handleFieldChange('marital_status', e.target.value)}
-                    notched
-                  >
-                    <MenuItem value="Single">Single</MenuItem>
-                    <MenuItem value="Married">Married</MenuItem>
-                    <MenuItem value="Divorced">Divorced</MenuItem>
-                    <MenuItem value="Widowed">Widowed</MenuItem>
-                  </Select>
-                </FormControl>
-              )}
-            </Grid>
-            <Grid item xs={12}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Education</Typography>
-                  <Typography variant="body1">{currentData.education || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Education"
-                  fullWidth
-                  value={currentData.education || ''}
-                  onChange={(e) => handleFieldChange('education', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Date of Birth</Typography>
-                  <Typography variant="body1">{currentData.date_of_birth || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Date of Birth"
-                  type="date"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={currentData.date_of_birth || ''}
-                  onChange={(e) => handleFieldChange('date_of_birth', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Place of Birth</Typography>
-                  <Typography variant="body1">{currentData.place_of_birth || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Place of Birth"
-                  fullWidth
-                  value={currentData.place_of_birth || ''}
-                  onChange={(e) => handleFieldChange('place_of_birth', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Country of Birth</Typography>
-                  <Typography variant="body1">{currentData.country_of_birth || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel shrink>Country of Birth</InputLabel>
-                  <Select
-                    value={currentData.country_of_birth || ''}
-                    label="Country of Birth"
-                    onChange={(e) => handleFieldChange('country_of_birth', e.target.value)}
-                    notched
-                  >
-                    {countries.map((country) => (
-                      <MenuItem key={country} value={country}>
-                        {country}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Birth Name</Typography>
-                  <Typography variant="body1">{currentData.birth_name || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Birth Name"
-                  fullWidth
-                  value={currentData.birth_name || ''}
-                  onChange={(e) => handleFieldChange('birth_name', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Citizenship</Typography>
-                  <Typography variant="body1">{currentData.citizenship || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <FormControl fullWidth>
-                  <InputLabel shrink>Citizenship</InputLabel>
-                  <Select
-                    value={currentData.citizenship || ''}
-                    label="Citizenship"
-                    onChange={(e) => handleFieldChange('citizenship', e.target.value)}
-                    notched
-                  >
-                    {countries.map((country) => (
-                      <MenuItem key={country} value={country}>
-                        {country}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Place of Residence</Typography>
-                  <Typography variant="body1">{currentData.place_of_residence || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Place of Residence"
-                  fullWidth
-                  value={currentData.place_of_residence || ''}
-                  onChange={(e) => handleFieldChange('place_of_residence', e.target.value)}
-                />
-              )}
-            </Grid>
-          </Grid>
-        </TabPanel>
-        <TabPanel value={tabValue} index={3}>
-          <Typography variant="h6" gutterBottom>
-            Bank Details
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Bank Name</Typography>
-                  <Typography variant="body1">{currentData.bank_name || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Bank Name"
-                  fullWidth
-                  value={currentData.bank_name || ''}
-                  onChange={(e) => handleFieldChange('bank_name', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Bank Code No.</Typography>
-                  <Typography variant="body1">{currentData.bank_code_no || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Bank Code No."
-                  fullWidth
-                  value={currentData.bank_code_no || ''}
-                  onChange={(e) => handleFieldChange('bank_code_no', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">Bank Account No.</Typography>
-                  <Typography variant="body1">{currentData.bank_account_no || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="Bank Account No."
-                  fullWidth
-                  value={currentData.bank_account_no || ''}
-                  onChange={(e) => handleFieldChange('bank_account_no', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">IBAN</Typography>
-                  <Typography variant="body1">{currentData.iban || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="IBAN"
-                  fullWidth
-                  value={currentData.iban || ''}
-                  onChange={(e) => handleFieldChange('iban', e.target.value)}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              {currentMode === 'view' ? (
-                <Box>
-                  <Typography variant="subtitle2">SWIFT/BIC</Typography>
-                  <Typography variant="body1">{currentData.swift_bic || 'N/A'}</Typography>
-                </Box>
-              ) : (
-                <TextField
-                  label="SWIFT/BIC"
-                  fullWidth
-                  value={currentData.swift_bic || ''}
-                  onChange={(e) => handleFieldChange('swift_bic', e.target.value)}
                 />
               )}
             </Grid>

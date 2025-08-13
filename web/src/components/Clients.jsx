@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useContext, useMemo } from 'react';
+// web/src/components/Clients.jsx
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutTableOverview, LayoutContext } from './Layout_TableOverview.jsx';
+import { LayoutTableOverview, LayoutContext } from './Layout_TableOverview';
 import {
   Typography,
   Box,
@@ -34,6 +35,89 @@ import { useUser } from '../context/UserContext';
 import jwtDecode from 'jwt-decode';
 import '../styles/styles_tables.css';
 
+// Custom hook for permissions
+const useClientPermissions = () => {
+  const { user } = useUser();
+  const [permissions, setPermissions] = useState({ clients: { access: {} } });
+
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const decoded = jwtDecode(token);
+        if (decoded.exp * 1000 < Date.now()) return;
+        const response = await api.get('/permissions/permissions-matrix', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setPermissions(response.data?.moduleData || { clients: { access: {} } });
+      } catch (err) {
+        console.error('Fetch permissions error:', err);
+      }
+    };
+    fetchPermissions();
+  }, []);
+
+  const userRole = useMemo(() => {
+    if (user?.role) return user.role;
+    if (user?.roles && Array.isArray(user.roles) && user.roles.length > 0) return user.roles[0];
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        return decoded.roles && Array.isArray(decoded.roles) && decoded.roles.length > 0 ? decoded.roles[0] : null;
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return null;
+  }, [user]);
+
+  const hasViewClients = useMemo(() => {
+    const token = localStorage.getItem('token');
+    let tokenHasAdmin = false;
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.clients?.access[userRole]?.['view_clients'] === true;
+  }, [userRole, permissions]);
+
+  const hasEditClients = useMemo(() => {
+    const token = localStorage.getItem('token');
+    let tokenHasAdmin = false;
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.clients?.access[userRole]?.['edit_clients'] === true;
+  }, [userRole, permissions]);
+
+  const hasDeleteClients = useMemo(() => {
+    const token = localStorage.getItem('token');
+    let tokenHasAdmin = false;
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.clients?.access[userRole]?.['delete_clients'] === true;
+  }, [userRole, permissions]);
+
+  return { hasViewClients, hasEditClients, hasDeleteClients };
+};
+
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
   state = { hasError: false };
@@ -62,10 +146,8 @@ class ErrorBoundary extends React.Component {
 const Clients = () => {
   const { dialogStyle, lightboxStyles, tableStyles, isSidebarCollapsed } = useContext(LayoutContext) || {};
   const { showSnackbar } = useSnackbar();
-  const { user } = useUser();
   const navigate = useNavigate();
   const [clients, setClients] = useState([]);
-  const [permissions, setPermissions] = useState({ clients: { access: {} } });
   const [filter, setFilter] = useState('');
   const [error, setError] = useState(null);
   const [savedViews, setSavedViews] = useState(() => JSON.parse(localStorage.getItem('clientViews')) || []);
@@ -99,7 +181,9 @@ const Clients = () => {
     remarks: '',
   });
   const [addLoading, setAddLoading] = useState(false);
-  const [loading, setLoading] = useState(true); // Added loading state for data fetch
+  const [loading, setLoading] = useState(true);
+  const { hasViewClients, hasEditClients, hasDeleteClients } = useClientPermissions();
+
   const [columnsConfig, setColumnsConfig] = useState([
     {
       field: 'client_name',
@@ -134,7 +218,7 @@ const Clients = () => {
       flex: 1,
       minWidth: 120,
       visible: true,
-      editable: permissions.clients?.access[user?.role]?.['edit_clients'] ?? false,
+      editable: hasEditClients,
       type: 'singleSelect',
       valueOptions: ['Active', 'Inactive'],
     },
@@ -206,7 +290,7 @@ const Clients = () => {
               setSelectedClient(params.row);
               setLightboxMode('edit');
             }}
-            disabled={!(permissions.clients?.access[user?.role]?.['edit_clients'] ?? false)}
+            disabled={!hasEditClients}
           >
             Edit
           </Button>
@@ -218,7 +302,7 @@ const Clients = () => {
               setActionsAnchorEl(event.currentTarget);
               setClientToDelete(params.row);
             }}
-            disabled={!(permissions.clients?.access[user?.role]?.['delete_clients'] ?? false)}
+            disabled={!hasDeleteClients}
           >
             Actions
           </Button>
@@ -240,102 +324,6 @@ const Clients = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [openViewsDialog, setOpenViewsDialog] = useState(false);
 
-  const userRole = useMemo(() => {
-    if (user?.role) return user.role;
-    if (user?.roles && Array.isArray(user.roles) && user.roles.length > 0) return user.roles[0];
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        return decoded.roles && Array.isArray(decoded.roles) && decoded.roles.length > 0 ? decoded.roles[0] : null;
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return null;
-  }, [user]);
-
-  const hasViewClients = useMemo(() => {
-    const token = localStorage.getItem('token');
-    let tokenHasAdmin = false;
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.clients?.access[userRole]?.['view_clients'] === true;
-  }, [userRole, permissions]);
-
-  const hasEditClients = useMemo(() => {
-    const token = localStorage.getItem('token');
-    let tokenHasAdmin = false;
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.clients?.access[userRole]?.['edit_clients'] === true;
-  }, [userRole, permissions]);
-
-  const hasDeleteClients = useMemo(() => {
-    const token = localStorage.getItem('token');
-    let tokenHasAdmin = false;
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.clients?.access[userRole]?.['delete_clients'] === true;
-  }, [userRole, permissions]);
-
-  // Fetch permissions to determine access
-  useEffect(() => {
-    const fetchPermissions = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('No authentication token found');
-        navigate('/login', { replace: true });
-        return;
-      }
-      try {
-        const decoded = jwtDecode(token);
-        console.log('Decoded token for permissions:', decoded);
-        if (decoded.exp * 1000 < Date.now()) {
-          localStorage.removeItem('token');
-          showSnackbar('Session expired, please log in', 'error');
-          navigate('/login', { replace: true });
-          return;
-        }
-        const response = await api.get('/permissions/permissions-matrix', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Permissions response:', response);
-        setPermissions(response.data?.moduleData || response.moduleData || { clients: { access: {} } }); // Adjusted for data structure
-      } catch (err) {
-        console.error('Fetch permissions error:', err, err.response?.data);
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          localStorage.removeItem('token');
-          showSnackbar('Unauthorized: Please log in again', 'error');
-          navigate('/login', { replace: true });
-        } else {
-          showSnackbar('Failed to load permissions', 'error');
-          setPermissions({ clients: { access: { Admin: { view_clients: true, edit_clients: true, delete_clients: true } } } }); // Default on error
-        }
-      }
-    };
-    fetchPermissions();
-  }, [navigate, showSnackbar]);
-
-  // Fetch clients
   useEffect(() => {
     const fetchData = async () => {
       const token = localStorage.getItem('token');
@@ -344,7 +332,7 @@ const Clients = () => {
         navigate('/login', { replace: true });
         return;
       }
-      setLoading(true); // Start loading
+      setLoading(true);
       try {
         const decoded = jwtDecode(token);
         console.log('Decoded token for data:', decoded);
@@ -355,7 +343,6 @@ const Clients = () => {
           return;
         }
         const clientsResponse = await api.get('/clients', { headers: { Authorization: `Bearer ${token}` } });
-
         console.log('Clients API full response:', clientsResponse);
         const clientsData = Array.isArray(clientsResponse.data.data) ? clientsResponse.data.data : Array.isArray(clientsResponse.data) ? clientsResponse.data : [];
         console.log('Clients API response data:', clientsData);
@@ -366,17 +353,14 @@ const Clients = () => {
         }));
         console.log('Setting clients:', formattedData);
         setClients(formattedData);
-
         setError(null);
       } catch (error) {
         console.error('Fetch data error:', {
           message: error.message,
-          response: error.response
-            ? {
-                status: error.response.status,
-                data: error.response.data,
-              }
-            : 'No response data',
+          response: error.response ? {
+            status: error.response.status,
+            data: error.response.data,
+          } : 'No response data',
         });
         if (error.response?.status === 403) {
           setError('Permission denied to access clients');
@@ -389,7 +373,7 @@ const Clients = () => {
           navigate('/login', { replace: true });
         }
       } finally {
-        setLoading(false); // End loading
+        setLoading(false);
       }
     };
     if (hasViewClients) {
@@ -398,7 +382,7 @@ const Clients = () => {
       setError('Permission denied to view clients');
       setLoading(false);
     }
-  }, [navigate, user?.role, permissions, hasViewClients, showSnackbar]);
+  }, [navigate, hasViewClients, showSnackbar]);
 
   useEffect(() => {
     localStorage.setItem('clientViews', JSON.stringify(savedViews));
@@ -426,7 +410,7 @@ const Clients = () => {
       );
     };
     return applyFilterRules(clients, filterRules, searchFilter);
-  }, [clients, filterRules, filter]); // Memoized for performance
+  }, [clients, filterRules, filter]);
 
   const handleFilterClick = (event) => {
     if (anchorEl) {
@@ -527,7 +511,7 @@ const Clients = () => {
   const handleCellEditCommit = async (params) => {
     if (!hasEditClients) {
       showSnackbar('Permission denied to edit clients', 'error');
-      return params.value; // Return original value
+      return params.value;
     }
     const { id, field, value } = params;
     const updatedClient = clients.find((client) => client.uid === id);
@@ -541,11 +525,11 @@ const Clients = () => {
         const newData = response.data.data || response.data;
         setClients((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
         showSnackbar('Client updated successfully', 'success');
-        return value; // Return new value
+        return value;
       } catch (err) {
         console.error('Inline edit error:', err);
         showSnackbar(err.response?.data?.message || 'Failed to update client', 'error');
-        return updatedClient[field]; // Revert to old value
+        return updatedClient[field];
       }
     }
     return params.value;
@@ -569,7 +553,6 @@ const Clients = () => {
       showSnackbar('Permission denied to add clients', 'error');
       return;
     }
-    // Basic validation
     if (!addFormData.client_name) {
       showSnackbar('Missing required field: Client Name', 'error');
       return;
@@ -753,6 +736,7 @@ const Clients = () => {
               columnsConfig={columnsConfig}
               onClose={() => setSelectedClient(null)}
               onSave={handleSaveEdit}
+              onEdit={() => setLightboxMode('edit')}
             />
           </ErrorBoundary>
         </Box>

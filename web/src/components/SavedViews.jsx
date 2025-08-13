@@ -1,5 +1,4 @@
-// SavedViews.jsx
-
+// web/src/components/SavedViews.jsx
 import React, { useState, useContext } from 'react';
 import {
   Box,
@@ -16,8 +15,8 @@ import {
   TextField,
 } from '@mui/material';
 import { Delete as DeleteIcon, Save as SaveIcon } from '@mui/icons-material';
-import LayoutLightbox from './Layout_Lightbox.jsx';
-import { LayoutContext } from './Layout_TableOverview.jsx';
+import LayoutLightbox from './Layout_Lightbox';
+import { LayoutContext } from './Layout_TableOverview';
 
 const SavedViews = ({
   savedViews = [],

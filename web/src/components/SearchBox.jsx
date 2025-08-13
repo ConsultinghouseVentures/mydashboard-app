@@ -1,10 +1,11 @@
+// web/src/components/SearchBox.jsx
 import React from 'react';
 import { TextField, InputAdornment, IconButton } from '@mui/material';
 import { Search as SearchIcon, Close as CloseIcon } from '@mui/icons-material';
 
 const SearchBox = ({ value, onChange, onClear }) => {
   const handleClear = () => {
-    onClear(''); // Clear the search value
+    onClear('');
   };
 
   return (
@@ -27,7 +28,7 @@ const SearchBox = ({ value, onChange, onClear }) => {
               onClick={handleClear}
               edge="end"
               size="small"
-              sx={{ color: 'gray' }} // Improve visibility with gray color
+              sx={{ color: 'gray' }}
             >
               <CloseIcon />
             </IconButton>

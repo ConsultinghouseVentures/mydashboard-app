@@ -23,6 +23,7 @@ export const useClientData = (uid) => {
       }
       setIsLoading(true);
       try {
+        console.log('Fetching client for UID:', uid);
         const response = await api.get(`/clients/${uid}`, {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 30000,

@@ -2,5 +2,6 @@
 export const countries = [
   'Afghanistan',
   'Albania',
-  // Add other countries as needed
+  'Germany',
+  'United States of America',
 ];
