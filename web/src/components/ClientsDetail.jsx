@@ -1,7 +1,7 @@
 // web/src/components/ClientsDetail.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Typography, Box, Button, IconButton, Tabs, Tab, Paper, CircularProgress, Grid, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Typography, Box, Button, IconButton, Tabs, Tab, Paper, CircularProgress, Grid, FormControl, InputLabel, Select, MenuItem, TextField } from '@mui/material';
 import { ArrowBack, Edit, Save, Add } from '@mui/icons-material';
 import api from '../services/api';
 import { useSnackbar } from '../context/SnackbarContext';

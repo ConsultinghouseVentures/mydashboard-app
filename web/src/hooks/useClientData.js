@@ -38,6 +38,7 @@ export const useClientData = (uid) => {
           timeout: 30000,
         });
         console.log('Employees response:', employeesRes.data);
+        console.log('Employee data structure:', employeesRes.data.data);
         setEmployees(employeesRes.data.data || []);
         setError(null);
       } catch (err) {
