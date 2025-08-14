@@ -1,3 +1,4 @@
+// web/src/components/TableFilterDialog.jsx
 import React, { useState, useEffect, useContext } from 'react';
 import {
   Box,
@@ -6,16 +7,16 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-  MenuItem,
   FormControl,
   InputLabel,
   Select,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
 import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
-import LayoutLightbox from './Layout_Lightbox.jsx';
-import { LayoutContext } from './Layout_TableOverview.jsx';
+import LayoutLightbox from './Layout_Lightbox';
+import { LayoutContext } from './Layout_TableOverview';
 
 const getOperators = (type) => {
   switch (type) {
