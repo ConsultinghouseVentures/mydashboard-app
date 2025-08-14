@@ -667,7 +667,7 @@ const Clients = () => {
                 {error}
               </Typography>
             )}
-            <Box sx={{ height: 'calc(100% - 150px)', width: '100%' }}>
+            <Box sx={{ height: '600px', width: '100%' }}>
               {loading ? (
                 <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} />
               ) : (

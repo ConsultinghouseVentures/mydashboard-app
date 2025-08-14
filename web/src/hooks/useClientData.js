@@ -33,7 +33,7 @@ export const useClientData = (uid) => {
           throw new Error('Invalid client data');
         }
         setClient(data);
-        const employeesRes = await api.get(`/employees?client_id=${uid}`, {
+        const employeesRes = await api.get(`/employees?client_id=${uid}&role=Employee`, {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 30000,
         });

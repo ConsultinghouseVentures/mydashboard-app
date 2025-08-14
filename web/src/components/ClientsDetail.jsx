@@ -126,6 +126,8 @@ const ClientsDetail = () => {
     );
   }
 
+  const filteredEmployees = employees.filter(emp => emp.role.toLowerCase() === 'employee');
+
   return (
     <Box sx={{ p: 3, width: '100%' }}>
       <Paper elevation={3} sx={{ p: 3 }}>
@@ -187,7 +189,7 @@ const ClientsDetail = () => {
         </TabPanel>
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h6">Employees ({employees.length})</Typography>
+            <Typography variant="h6">Employees ({filteredEmployees.length})</Typography>
             <Button variant="outlined" startIcon={<Add />} onClick={() => setOpenAddEmployee(true)}>
               Add Employee
             </Button>
@@ -197,9 +199,24 @@ const ClientsDetail = () => {
               { field: 'name', headerName: 'Name' },
               { field: 'email', headerName: 'Email' },
               { field: 'user_roles', headerName: 'User Roles' },
+              {
+                field: 'actions',
+                headerName: 'Actions',
+                width: 100,
+                renderCell: (params) => (
+                  <IconButton
+                    onClick={() => navigate(`/employees/${params.row.uid}`)}
+                    disabled={false}
+                    aria-label="Edit employee"
+                  >
+                    <Edit />
+                  </IconButton>
+                ),
+              },
             ]}
-            data={employees.map((emp) => ({
+            data={filteredEmployees.map((emp) => ({
               ...emp,
+              name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
               user_roles: emp.user_roles ? emp.user_roles.replace(/[{}]/g, '').split(',').join(', ') : '',
             }))}
           />

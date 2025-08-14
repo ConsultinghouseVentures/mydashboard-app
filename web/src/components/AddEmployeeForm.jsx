@@ -52,6 +52,12 @@ const AddEmployeeForm = ({ open, onClose, formData, onChange, onSubmit, loading,
           <MenuItem value="Inactive">Inactive</MenuItem>
         </Select>
       </FormControl>
+      <FormControl fullWidth margin="normal">
+        <InputLabel>Role</InputLabel>
+        <Select name="role" value={formData.role} onChange={onChange}>
+          <MenuItem value="Employee">Employee</MenuItem>
+        </Select>
+      </FormControl>
       <TextField
         label="Client"
         value={clientName}
