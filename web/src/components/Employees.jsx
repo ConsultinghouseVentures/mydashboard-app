@@ -1,3 +1,4 @@
+// Path: src/components/Employees.jsx
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutTableOverview, LayoutContext } from './Layout_TableOverview.jsx';
@@ -28,7 +29,8 @@ import TableFilterDialog, { applyFilterRules } from './TableFilterDialog';
 import SearchBox from './SearchBox';
 import SavedViews from './SavedViews';
 import LayoutLightbox from './Layout_Lightbox';
-import TableLightbox from './TableLightbox';
+import EditEmployeeLightbox from './EditEmployeeLightbox';
+import AddEmployeeForm from './AddEmployeeForm';
 import { useSnackbar } from '../context/SnackbarContext';
 import { useUser } from '../context/UserContext';
 import { useUserRoles } from '../constants/roles';
@@ -65,7 +67,7 @@ const Employees = () => {
   const { showSnackbar } = useSnackbar();
   const { user } = useUser();
   const navigate = useNavigate();
-  const { roles: roleList, loading: rolesLoading, error: rolesError } = useUserRoles(); // Destructure to fix TypeError
+  const { roles: roleList, loading: rolesLoading, error: rolesError } = useUserRoles();
   const [employees, setEmployees] = useState([]);
   const [clients, setClients] = useState([]);
   const [permissions, setPermissions] = useState({ employees: { access: {} } });
@@ -90,7 +92,387 @@ const Employees = () => {
     client_id: '',
   });
   const [addLoading, setAddLoading] = useState(false);
-  const [loading, setLoading] = useState(true); // Added loading state for data fetch
+  const [loading, setLoading] = useState(true);
+  const [filterRules, setFilterRules] = useState(() => {
+    try {
+      const rules = JSON.parse(localStorage.getItem('employeeFilterRules')) || [];
+      return rules;
+    } catch (e) {
+      console.error('Error parsing employeeFilterRules from localStorage:', e);
+      return [];
+    }
+  });
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [openViewsDialog, setOpenViewsDialog] = useState(false);
+
+  const userRole = useMemo(() => {
+    console.log('User object:', user);
+    if (user?.role) return user.role;
+    if (user?.roles && Array.isArray(user.roles) && user.roles.length > 0) return user.roles[0];
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        console.log('Decoded token:', decoded);
+        return decoded.roles && Array.isArray(decoded.roles) && decoded.roles.length > 0 ? decoded.roles[0] : null;
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return null;
+  }, [user]);
+
+  const hasViewEmployees = useMemo(() => {
+    const token = localStorage.getItem('token');
+    let tokenHasAdmin = false;
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.employees?.access[userRole]?.['view_employees'] === true;
+  }, [userRole, permissions]);
+
+  const hasEditEmployees = useMemo(() => {
+    const token = localStorage.getItem('token');
+    let tokenHasAdmin = false;
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.employees?.access[userRole]?.['edit_employees'] === true;
+  }, [userRole, permissions]);
+
+  const hasDeleteEmployees = useMemo(() => {
+    const token = localStorage.getItem('token');
+    let tokenHasAdmin = false;
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
+      } catch (e) {
+        console.error('Token decode error:', e);
+      }
+    }
+    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.employees?.access[userRole]?.['delete_employees'] === true;
+  }, [userRole, permissions]);
+
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('No authentication token found');
+        navigate('/login', { replace: true });
+        return;
+      }
+      try {
+        const decoded = jwtDecode(token);
+        console.log('Decoded token for permissions:', decoded);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          showSnackbar('Session expired, please log in', 'error');
+          navigate('/login', { replace: true });
+          return;
+        }
+        const response = await api.get('/permissions/permissions-matrix', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('Permissions response:', response.data);
+        const permissionsData = response.data?.moduleData || response.data || {
+          employees: {
+            access: {
+              Admin: { view_employees: true, edit_employees: true, delete_employees: true },
+              [userRole || 'default']: { view_employees: true, edit_employees: true, delete_employees: true },
+            },
+          },
+        };
+        setPermissions(permissionsData);
+      } catch (err) {
+        console.error('Fetch permissions error:', err, err.response?.data);
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          localStorage.removeItem('token');
+          showSnackbar('Unauthorized: Please log in again', 'error');
+          navigate('/login', { replace: true });
+        } else {
+          showSnackbar('Failed to load permissions', 'error');
+          setPermissions({
+            employees: {
+              access: {
+                Admin: { view_employees: true, edit_employees: true, delete_employees: true },
+                [userRole || 'default']: { view_employees: true, edit_employees: true, delete_employees: true },
+              },
+            },
+          });
+        }
+      }
+    };
+    fetchPermissions();
+  }, [navigate, showSnackbar, userRole]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/login', { replace: true });
+        return;
+      }
+      setLoading(true);
+      try {
+        const decoded = jwtDecode(token);
+        console.log('Decoded token for data:', decoded);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          showSnackbar('Session expired, please log in', 'error');
+          navigate('/login', { replace: true });
+          return;
+        }
+        const [employeesResponse, clientsResponse] = await Promise.all([
+          api.get('/employees', { headers: { Authorization: `Bearer ${token}` } }),
+          api.get('/clients', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+
+        const employeesData = Array.isArray(employeesResponse.data.data) ? employeesResponse.data.data : Array.isArray(employeesResponse.data) ? employeesResponse.data : [];
+        const formattedData = employeesData.map((row) => ({
+          ...row,
+          created_at: row.created_at ? new Date(row.created_at * 1000) : null,
+          updated_at: row.updated_at ? new Date(row.updated_at) : null,
+        }));
+        setEmployees(formattedData);
+
+        const clientsData = Array.isArray(clientsResponse.data.data) ? clientsResponse.data.data : Array.isArray(clientsResponse.data) ? clientsResponse.data : [];
+        setClients(clientsData);
+
+        setError(null);
+      } catch (error) {
+        console.error('Fetch data error:', {
+          message: error.message,
+          response: error.response ? { status: error.response.status, data: error.response.data } : 'No response data',
+        });
+        if (error.response?.status === 403) {
+          setError('Permission denied to access employees');
+        } else {
+          setError(error.response?.data?.message || 'Failed to fetch data');
+        }
+        if (error.response?.status === 401) {
+          localStorage.removeItem('token');
+          navigate('/login', { replace: true });
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (hasViewEmployees) {
+      fetchData();
+    } else {
+      setError('Permission denied to view employees');
+      setLoading(false);
+    }
+  }, [navigate, user?.role, permissions, hasViewEmployees, showSnackbar]);
+
+  useEffect(() => {
+    localStorage.setItem('employeeViews', JSON.stringify(savedViews));
+  }, [savedViews]);
+
+  useEffect(() => {
+    localStorage.setItem('employeeFilterRules', JSON.stringify(filterRules));
+  }, [filterRules]);
+
+  const handleColumnToggle = (field) => {
+    setColumnsConfig(columnsConfig.map((col) =>
+      col.field === field ? { ...col, visible: !col.visible } : col
+    ));
+  };
+
+  const getFilteredEmployees = useMemo(() => {
+    const searchFilter = (employee) => {
+      if (!filter) return true;
+      const search = filter.toLowerCase().trim();
+      return (
+        employee.last_name?.toLowerCase().includes(search) ||
+        employee.first_name?.toLowerCase().includes(search) ||
+        employee.client_name?.toLowerCase().includes(search) ||
+        employee.email?.toLowerCase().includes(search) ||
+        employee.role?.toLowerCase().includes(search) ||
+        employee.status?.toLowerCase().includes(search)
+      );
+    };
+    return applyFilterRules(employees, filterRules, searchFilter);
+  }, [employees, filterRules, filter]);
+
+  const handleFilterClick = (event) => {
+    setAnchorEl(anchorEl ? null : event.currentTarget);
+  };
+
+  const handleFilterClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleAddRule = () => {
+    const newRule = {
+      id: Date.now(),
+      field: '',
+      operator: '',
+      value: '',
+    };
+    setFilterRules([...filterRules, newRule]);
+  };
+
+  const handleViewsDialogOpen = () => {
+    setOpenViewsDialog(true);
+  };
+
+  const handleViewsDialogClose = () => {
+    setOpenViewsDialog(false);
+  };
+
+  const handleSaveEdit = async (updatedData) => {
+    if (!hasEditEmployees) {
+      showSnackbar('Permission denied to edit employees', 'error');
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showSnackbar('No authentication token found', 'error');
+      return;
+    }
+    try {
+      const response = await api.put(`/employees/${updatedData.uid}`, updatedData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const newData = response.data.data || response.data;
+      if (!newData || !newData.uid) {
+        throw new Error('Invalid response data');
+      }
+      setEmployees((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
+      setSelectedEmployee(null);
+      showSnackbar('Employee updated successfully', 'success');
+      return newData;
+    } catch (err) {
+      console.error('Update error:', err);
+      showSnackbar(err.response?.data?.message || 'Failed to update employee', 'error');
+      throw err;
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!hasDeleteEmployees) {
+      showSnackbar('Permission denied to delete employees', 'error');
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token || !employeeToDelete) {
+      showSnackbar('No authentication token or employee selected', 'error');
+      return;
+    }
+    try {
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) {
+        localStorage.removeItem('token');
+        showSnackbar('Session expired, please log in', 'error');
+        navigate('/login', { replace: true });
+        return;
+      }
+      await api.delete(`/employees/${employeeToDelete.uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setEmployees((prev) => prev.filter((e) => e.uid !== employeeToDelete.uid));
+      showSnackbar('Employee deleted successfully', 'success');
+    } catch (err) {
+      console.error('Delete error:', err);
+      showSnackbar(err.response?.data?.message || 'Failed to delete employee', 'error');
+    } finally {
+      setOpenDeleteDialog(false);
+      setEmployeeToDelete(null);
+      setActionsAnchorEl(null);
+    }
+  };
+
+  const handleCellEditCommit = async (params) => {
+    if (!hasEditEmployees) {
+      showSnackbar('Permission denied to edit employees', 'error');
+      return params.value;
+    }
+    const { id, field, value } = params;
+    const updatedEmployee = employees.find((employee) => employee.uid === id);
+    if (updatedEmployee) {
+      const updatedData = { ...updatedEmployee, [field]: value };
+      try {
+        const token = localStorage.getItem('token');
+        const response = await api.put(`/employees/${id}`, updatedData, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const newData = response.data.data || response.data;
+        setEmployees((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
+        showSnackbar('Employee updated successfully', 'success');
+        return value;
+      } catch (err) {
+        console.error('Inline edit error:', err);
+        showSnackbar(err.response?.data?.message || 'Failed to update employee', 'error');
+        return updatedEmployee[field];
+      }
+    }
+    return params.value;
+  };
+
+  const handleNewEmployee = () => {
+    if (!hasEditEmployees) {
+      showSnackbar('Permission denied to add employees', 'error');
+      return;
+    }
+    setOpenAddDialog(true);
+  };
+
+  const handleAddChange = (event) => {
+    const { name, value } = event.target;
+    setAddFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddSubmit = async () => {
+    if (!hasEditEmployees) {
+      showSnackbar('Permission denied to add employees', 'error');
+      return;
+    }
+    if (!addFormData.first_name || !addFormData.last_name || !addFormData.email || !addFormData.password) {
+      showSnackbar('Missing required fields: First Name, Last Name, Email, Password', 'error');
+      return;
+    }
+    if (!/\S+@\S+\.\S+/.test(addFormData.email)) {
+      showSnackbar('Invalid email format', 'error');
+      return;
+    }
+    setAddLoading(true);
+    const token = localStorage.getItem('token');
+    try {
+      const response = await api.post('/employees', addFormData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showSnackbar('Employee added successfully', 'success');
+      setEmployees((prev) => [...prev, response.data.data || response.data]);
+      setOpenAddDialog(false);
+      setAddFormData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        password: '',
+        status: 'Active',
+        role: 'Employee',
+        client_id: '',
+      });
+    } catch (err) {
+      console.error('Add employee error:', err);
+      showSnackbar(err.response?.data?.message || 'Failed to add employee', 'error');
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
   const [columnsConfig, setColumnsConfig] = useState([
     {
       field: 'last_name',
@@ -186,9 +568,9 @@ const Employees = () => {
       flex: 1,
       minWidth: 120,
       visible: true,
-      editable: permissions.employees?.access[user?.role]?.['edit_employees'] ?? false,
+      editable: hasEditEmployees,
       type: 'singleSelect',
-      valueOptions: () => roleList.map(role => role.value), // Made function for dynamic update after fetch
+      valueOptions: () => roleList.map(role => role.value),
     },
     {
       field: 'status',
@@ -196,7 +578,7 @@ const Employees = () => {
       flex: 1,
       minWidth: 120,
       visible: true,
-      editable: permissions.employees?.access[user?.role]?.['edit_employees'] ?? false,
+      editable: hasEditEmployees,
       type: 'singleSelect',
       valueOptions: ['Active', 'Inactive'],
     },
@@ -219,18 +601,14 @@ const Employees = () => {
             alignItems: 'center',
             width: '100%',
             height: '100%',
-            opacity: 0,
-            transition: 'opacity 0.2s',
-            '& .MuiButton-root': { m: 0.5, minWidth: '70px' },
-            '.MuiDataGrid-row:hover &': {
-              opacity: 1,
-            },
+            '& .MuiButton-root': { m: 0.5, minWidth: '70px', zIndex: 1 },
           }}
         >
           <Button
             size="small"
             variant="outlined"
             onClick={(event) => {
+              console.log('Preview button clicked for row:', params.row);
               event.stopPropagation();
               setSelectedEmployee(params.row);
               setLightboxMode('view');
@@ -242,11 +620,12 @@ const Employees = () => {
             size="small"
             variant="outlined"
             onClick={(event) => {
+              console.log('Edit button clicked for row:', params.row);
               event.stopPropagation();
               setSelectedEmployee(params.row);
               setLightboxMode('edit');
             }}
-            disabled={!(permissions.employees?.access[user?.role]?.['edit_employees'] ?? false)}
+            disabled={!hasEditEmployees}
           >
             Edit
           </Button>
@@ -254,11 +633,12 @@ const Employees = () => {
             size="small"
             variant="outlined"
             onClick={(event) => {
+              console.log('Actions button clicked for row:', params.row);
               event.stopPropagation();
               setActionsAnchorEl(event.currentTarget);
               setEmployeeToDelete(params.row);
             }}
-            disabled={!(permissions.employees?.access[user?.role]?.['delete_employees'] ?? false)}
+            disabled={!hasDeleteEmployees}
           >
             Actions
           </Button>
@@ -267,395 +647,8 @@ const Employees = () => {
     },
   ]);
 
-  const [filterRules, setFilterRules] = useState(() => {
-    try {
-      const rules = JSON.parse(localStorage.getItem('employeeFilterRules')) || [];
-      console.log('Initial filterRules from localStorage:', rules);
-      return rules;
-    } catch (e) {
-      console.error('Error parsing employeeFilterRules from localStorage:', e);
-      return [];
-    }
-  });
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [openViewsDialog, setOpenViewsDialog] = useState(false);
-
-  const userRole = useMemo(() => {
-    if (user?.role) return user.role;
-    if (user?.roles && Array.isArray(user.roles) && user.roles.length > 0) return user.roles[0];
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        return decoded.roles && Array.isArray(decoded.roles) && decoded.roles.length > 0 ? decoded.roles[0] : null;
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return null;
-  }, [user]);
-
-  const hasViewEmployees = useMemo(() => {
-    const token = localStorage.getItem('token');
-    let tokenHasAdmin = false;
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.employees?.access[userRole]?.['view_employees'] === true;
-  }, [userRole, permissions]);
-
-  const hasEditEmployees = useMemo(() => {
-    const token = localStorage.getItem('token');
-    let tokenHasAdmin = false;
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.employees?.access[userRole]?.['edit_employees'] === true;
-  }, [userRole, permissions]);
-
-  const hasDeleteEmployees = useMemo(() => {
-    const token = localStorage.getItem('token');
-    let tokenHasAdmin = false;
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        tokenHasAdmin = decoded.roles && decoded.roles.includes('Admin');
-      } catch (e) {
-        console.error('Token decode error:', e);
-      }
-    }
-    return tokenHasAdmin || userRole?.toLowerCase() === 'admin' || permissions.employees?.access[userRole]?.['delete_employees'] === true;
-  }, [userRole, permissions]);
-
-  // Fetch permissions to determine access
-  useEffect(() => {
-    const fetchPermissions = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('No authentication token found');
-        navigate('/login', { replace: true });
-        return;
-      }
-      try {
-        const decoded = jwtDecode(token);
-        console.log('Decoded token for permissions:', decoded);
-        if (decoded.exp * 1000 < Date.now()) {
-          localStorage.removeItem('token');
-          showSnackbar('Session expired, please log in', 'error');
-          navigate('/login', { replace: true });
-          return;
-        }
-        const response = await api.get('/permissions/permissions-matrix', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Permissions response:', response);
-        setPermissions(response.data?.moduleData || response.moduleData || { employees: { access: {} } }); // Adjusted for data structure
-      } catch (err) {
-        console.error('Fetch permissions error:', err, err.response?.data);
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          localStorage.removeItem('token');
-          showSnackbar('Unauthorized: Please log in again', 'error');
-          navigate('/login', { replace: true });
-        } else {
-          showSnackbar('Failed to load permissions', 'error');
-          setPermissions({ employees: { access: { Admin: { view_employees: true, edit_employees: true, delete_employees: true } } } }); // Default on error
-        }
-      }
-    };
-    fetchPermissions();
-  }, [navigate, showSnackbar]);
-
-  // Fetch employees and clients
-  useEffect(() => {
-    const fetchData = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.log('No token, redirecting to login');
-        navigate('/login', { replace: true });
-        return;
-      }
-      setLoading(true); // Start loading
-      try {
-        const decoded = jwtDecode(token);
-        console.log('Decoded token for data:', decoded);
-        if (decoded.exp * 1000 < Date.now()) {
-          localStorage.removeItem('token');
-          showSnackbar('Session expired, please log in', 'error');
-          navigate('/login', { replace: true });
-          return;
-        }
-        const [employeesResponse, clientsResponse] = await Promise.all([
-          api.get('/employees', { headers: { Authorization: `Bearer ${token}` } }),
-          api.get('/clients', { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
-
-        console.log('Employees API full response:', employeesResponse);
-        const employeesData = Array.isArray(employeesResponse.data.data) ? employeesResponse.data.data : Array.isArray(employeesResponse.data) ? employeesResponse.data : [];
-        console.log('Employees API response data:', employeesData);
-        const formattedData = employeesData.map((row) => ({
-          ...row,
-          created_at: row.created_at ? new Date(row.created_at * 1000) : null,
-          updated_at: row.updated_at ? new Date(row.updated_at) : null,
-        }));
-        console.log('Setting employees:', formattedData);
-        setEmployees(formattedData);
-
-        const clientsData = Array.isArray(clientsResponse.data.data) ? clientsResponse.data.data : Array.isArray(clientsResponse.data) ? clientsResponse.data : [];
-        setClients(clientsData);
-
-        setError(null);
-      } catch (error) {
-        console.error('Fetch data error:', {
-          message: error.message,
-          response: error.response
-            ? {
-                status: error.response.status,
-                data: error.response.data,
-              }
-            : 'No response data',
-        });
-        if (error.response?.status === 403) {
-          setError('Permission denied to access employees');
-        } else {
-          setError(error.response?.data?.message || 'Failed to fetch data');
-        }
-        if (error.response?.status === 401) {
-          console.log('Unauthorized, redirecting to login');
-          localStorage.removeItem('token');
-          navigate('/login', { replace: true });
-        }
-      } finally {
-        setLoading(false); // End loading
-      }
-    };
-    if (hasViewEmployees) {
-      fetchData();
-    } else {
-      setError('Permission denied to view employees');
-      setLoading(false);
-    }
-  }, [navigate, user?.role, permissions, hasViewEmployees, showSnackbar]);
-
-  useEffect(() => {
-    localStorage.setItem('employeeViews', JSON.stringify(savedViews));
-  }, [savedViews]);
-
-  useEffect(() => {
-    localStorage.setItem('employeeFilterRules', JSON.stringify(filterRules));
-  }, [filterRules]);
-
-  const handleColumnToggle = (field) => {
-    setColumnsConfig(columnsConfig.map((col) =>
-      col.field === field ? { ...col, visible: !col.visible } : col
-    ));
-  };
-
-  const getFilteredEmployees = useMemo(() => {
-    const searchFilter = (employee) => {
-      if (!filter) return true;
-      const search = filter.toLowerCase().trim();
-      return (
-        employee.last_name?.toLowerCase().includes(search) ||
-        employee.first_name?.toLowerCase().includes(search) ||
-        employee.client_name?.toLowerCase().includes(search) ||
-        employee.email?.toLowerCase().includes(search) ||
-        employee.role?.toLowerCase().includes(search) ||
-        employee.status?.toLowerCase().includes(search)
-      );
-    };
-    return applyFilterRules(employees, filterRules, searchFilter);
-  }, [employees, filterRules, filter]); // Memoized for performance
-
-  const handleFilterClick = (event) => {
-    if (anchorEl) {
-      setAnchorEl(null);
-    } else {
-      setAnchorEl(event.currentTarget);
-    }
-  };
-
-  const handleFilterClose = () => {
-    console.log('handleFilterClose called, setting anchorEl to null');
-    setAnchorEl(null);
-  };
-
-  const handleAddRule = () => {
-    const newRule = {
-      id: Date.now(),
-      field: '',
-      operator: '',
-      value: '',
-    };
-    setFilterRules([...filterRules, newRule]);
-  };
-
-  const handleViewsDialogOpen = () => {
-    setOpenViewsDialog(true);
-  };
-
-  const handleViewsDialogClose = () => {
-    setOpenViewsDialog(false);
-  };
-
-  const handleSaveEdit = async (updatedData) => {
-    if (!hasEditEmployees) {
-      showSnackbar('Permission denied to edit employees', 'error');
-      return;
-    }
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No token found');
-      showSnackbar('No authentication token found', 'error');
-      return;
-    }
-    try {
-      console.log('Saving data:', updatedData);
-      const response = await api.put(`/employees/${updatedData.uid}`, updatedData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      console.log('API response:', response);
-      const newData = response.data.data || response.data;
-      if (!newData || !newData.uid) {
-        throw new Error('Invalid response data');
-      }
-      setEmployees((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
-      setSelectedEmployee(null);
-      showSnackbar('Employee updated successfully', 'success');
-      return newData;
-    } catch (err) {
-      console.error('Update error:', err);
-      showSnackbar(err.response?.data?.message || 'Failed to update employee', 'error');
-      throw err;
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!hasDeleteEmployees) {
-      showSnackbar('Permission denied to delete employees', 'error');
-      return;
-    }
-    const token = localStorage.getItem('token');
-    if (!token || !employeeToDelete) {
-      showSnackbar('No authentication token or employee selected', 'error');
-      return;
-    }
-    try {
-      const decoded = jwtDecode(token);
-      if (decoded.exp * 1000 < Date.now()) {
-        localStorage.removeItem('token');
-        showSnackbar('Session expired, please log in', 'error');
-        navigate('/login', { replace: true });
-        return;
-      }
-      await api.delete(`/employees/${employeeToDelete.uid}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setEmployees((prev) => prev.filter((e) => e.uid !== employeeToDelete.uid));
-      showSnackbar('Employee deleted successfully', 'success');
-    } catch (err) {
-      console.error('Delete error:', err);
-      showSnackbar(err.response?.data?.message || 'Failed to delete employee', 'error');
-    } finally {
-      setOpenDeleteDialog(false);
-      setEmployeeToDelete(null);
-      setActionsAnchorEl(null);
-    }
-  };
-
-  const handleCellEditCommit = async (params) => {
-    if (!hasEditEmployees) {
-      showSnackbar('Permission denied to edit employees', 'error');
-      return params.value; // Return original value
-    }
-    const { id, field, value } = params;
-    const updatedEmployee = employees.find((employee) => employee.uid === id);
-    if (updatedEmployee) {
-      const updatedData = { ...updatedEmployee, [field]: value };
-      try {
-        const token = localStorage.getItem('token');
-        const response = await api.put(`/employees/${id}`, updatedData, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const newData = response.data.data || response.data;
-        setEmployees((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
-        showSnackbar('Employee updated successfully', 'success');
-        return value; // Return new value
-      } catch (err) {
-        console.error('Inline edit error:', err);
-        showSnackbar(err.response?.data?.message || 'Failed to update employee', 'error');
-        return updatedEmployee[field]; // Revert to old value
-      }
-    }
-    return params.value;
-  };
-
-  // Removed processRowUpdate as editMode is 'cell', not 'row'
-  // Updated to use onCellEditStop or similar if needed, but onCellEditCommit handles it
-
-  const handleNewEmployee = () => {
-    if (!hasEditEmployees) {
-      showSnackbar('Permission denied to add employees', 'error');
-      return;
-    }
-    setOpenAddDialog(true);
-  };
-
-  const handleAddChange = (event) => {
-    const { name, value } = event.target;
-    setAddFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAddSubmit = async () => {
-    if (!hasEditEmployees) {
-      showSnackbar('Permission denied to add employees', 'error');
-      return;
-    }
-    // Basic validation
-    if (!addFormData.first_name || !addFormData.last_name || !addFormData.email || !addFormData.password) {
-      showSnackbar('Missing required fields: First Name, Last Name, Email, Password', 'error');
-      return;
-    }
-    // Simple email validation
-    if (!/\S+@\S+\.\S+/.test(addFormData.email)) {
-      showSnackbar('Invalid email format', 'error');
-      return;
-    }
-    setAddLoading(true);
-    const token = localStorage.getItem('token');
-    try {
-      const response = await api.post('/employees', addFormData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      showSnackbar('Employee added successfully', 'success');
-      setEmployees((prev) => [...prev, response.data.data || response.data]);
-      setOpenAddDialog(false);
-      setAddFormData({
-        first_name: '',
-        last_name: '',
-        email: '',
-        password: '',
-        status: 'Active',
-        role: 'Employee',
-        client_id: '',
-      });
-    } catch (err) {
-      console.error('Add employee error:', err);
-      showSnackbar(err.response?.data?.message || 'Failed to add employee', 'error');
-    } finally {
-      setAddLoading(false);
-    }
-  };
-
+  console.log('User Role:', userRole);
+  console.log('Permissions:', permissions);
   console.log('Employees state:', employees);
   console.log('Filter:', filter);
   console.log('Filter rules:', filterRules);
@@ -790,88 +783,29 @@ const Employees = () => {
             </LayoutLightbox>
           </ErrorBoundary>
           <ErrorBoundary>
-            <TableLightbox
+            <EditEmployeeLightbox
               open={!!selectedEmployee}
               mode={lightboxMode}
               data={selectedEmployee}
-              columnsConfig={columnsConfig}
+              clients={clients}
               onClose={() => setSelectedEmployee(null)}
               onSave={handleSaveEdit}
+              lightboxStyles={lightboxStyles}
+            />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <AddEmployeeForm
+              open={openAddDialog}
+              onClose={() => setOpenAddDialog(false)}
+              formData={addFormData}
+              onChange={handleAddChange}
+              onSubmit={handleAddSubmit}
+              loading={addLoading}
+              clients={clients}
             />
           </ErrorBoundary>
         </Box>
       </Box>
-      <LayoutLightbox open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
-        <DialogTitle sx={lightboxStyles ? lightboxStyles.title : { p: 1, fontSize: '1rem' }}>
-          Add New Employee
-        </DialogTitle>
-        <DialogContent sx={lightboxStyles ? lightboxStyles.content : { p: 1 }}>
-          <TextField
-            label="First Name"
-            name="first_name"
-            value={addFormData.first_name}
-            onChange={handleAddChange}
-            fullWidth
-            margin="normal"
-            required
-          />
-          <TextField
-            label="Last Name"
-            name="last_name"
-            value={addFormData.last_name}
-            onChange={handleAddChange}
-            fullWidth
-            margin="normal"
-            required
-          />
-          <TextField
-            label="Email"
-            name="email"
-            value={addFormData.email}
-            onChange={handleAddChange}
-            fullWidth
-            margin="normal"
-            required
-            type="email"
-          />
-          <TextField
-            label="Password"
-            name="password"
-            type="password"
-            value={addFormData.password}
-            onChange={handleAddChange}
-            fullWidth
-            margin="normal"
-            required
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Status</InputLabel>
-            <Select name="status" value={addFormData.status} onChange={handleAddChange}>
-              <MenuItem value="Active">Active</MenuItem>
-              <MenuItem value="Inactive">Inactive</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Client</InputLabel>
-            <Select name="client_id" value={addFormData.client_id} onChange={handleAddChange}>
-              <MenuItem value="">None</MenuItem>
-              {clients.map((client) => (
-                <MenuItem key={client.uid} value={client.uid}>
-                  {client.client_name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions sx={lightboxStyles ? lightboxStyles.actions : { p: 1 }}>
-          <Button size="small" onClick={() => setOpenAddDialog(false)}>
-            Cancel
-          </Button>
-          <Button size="small" onClick={handleAddSubmit} disabled={addLoading}>
-            {addLoading ? <CircularProgress size={24} /> : 'Save'}
-          </Button>
-        </DialogActions>
-      </LayoutLightbox>
       <Menu
         anchorEl={actionsAnchorEl}
         open={Boolean(actionsAnchorEl)}

@@ -1,12 +1,36 @@
-// web/src/components/AddEmployeeForm.jsx
+// Path: src/components/AddEmployeeForm.jsx
 import React from 'react';
-import { DialogTitle, DialogContent, DialogActions, TextField, FormControl, InputLabel, Select, MenuItem, Button, CircularProgress } from '@mui/material';
+import {
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Button,
+  CircularProgress,
+  IconButton,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import LayoutLightbox from './Layout_Lightbox';
 
-const AddEmployeeForm = ({ open, onClose, formData, onChange, onSubmit, loading, clientName }) => (
+const AddEmployeeForm = ({ open, onClose, formData, onChange, onSubmit, loading, clients }) => (
   <LayoutLightbox open={open} onClose={onClose}>
-    <DialogTitle>Add New Employee</DialogTitle>
-    <DialogContent>
+    <DialogTitle sx={{ p: 1, fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      Add New Employee
+      <IconButton
+        aria-label="close"
+        onClick={onClose}
+        sx={{
+          color: (theme) => theme.palette.grey[500],
+        }}
+      >
+        <CloseIcon />
+      </IconButton>
+    </DialogTitle>
+    <DialogContent sx={{ p: 1 }}>
       <TextField
         label="First Name"
         name="first_name"
@@ -26,7 +50,7 @@ const AddEmployeeForm = ({ open, onClose, formData, onChange, onSubmit, loading,
         required
       />
       <TextField
-        label="Email (User Name)"
+        label="Email"
         name="email"
         value={formData.email}
         onChange={onChange}
@@ -55,20 +79,28 @@ const AddEmployeeForm = ({ open, onClose, formData, onChange, onSubmit, loading,
       <FormControl fullWidth margin="normal">
         <InputLabel>Role</InputLabel>
         <Select name="role" value={formData.role} onChange={onChange}>
+          <MenuItem value="Admin">Admin</MenuItem>
+          <MenuItem value="User">User</MenuItem>
           <MenuItem value="Employee">Employee</MenuItem>
         </Select>
       </FormControl>
-      <TextField
-        label="Client"
-        value={clientName}
-        fullWidth
-        margin="normal"
-        disabled
-      />
+      <FormControl fullWidth margin="normal">
+        <InputLabel>Client</InputLabel>
+        <Select name="client_id" value={formData.client_id} onChange={onChange}>
+          <MenuItem value="">None</MenuItem>
+          {clients.map((client) => (
+            <MenuItem key={client.uid} value={client.uid}>
+              {client.client_name}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
     </DialogContent>
-    <DialogActions>
-      <Button onClick={onClose}>Cancel</Button>
-      <Button onClick={onSubmit} disabled={loading}>
+    <DialogActions sx={{ p: 1 }}>
+      <Button size="small" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button size="small" onClick={onSubmit} disabled={loading}>
         {loading ? <CircularProgress size={24} /> : 'Save'}
       </Button>
     </DialogActions>
