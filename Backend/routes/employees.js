@@ -6,6 +6,61 @@ const db = require('../config/db');
 const { checkPermission } = require('./permissions');
 const auth = require('../middleware/auth');
 
+// GET /api/employees - Fetch all employees with roles and client names
+router.get('/', auth, checkPermission('employees', 'view'), async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT u.uid, u.username, u.email, u.created_at, u.updated_at, u.status, 
+             COALESCE(u.role, r.name, '') as role, u.first_name, u.last_name, u.name,
+             u.academic_title, u.salutation, u.gender, u.phone, u.website,
+             u.employment_start, u.employment_end, u.religion, u.marital_status,
+             u.education, u.date_of_birth, u.place_of_birth, u.country_of_birth,
+             u.birth_name, u.citizenship, u.place_of_residence, u.street1,
+             u.street2, u.zip, u.city, u.state, u.country, u.bank_name,
+             u.bank_code_no, u.bank_account_no, u.iban, u.swift_bic, u.client_id,
+             c.client_name
+      FROM fe_users u
+      LEFT JOIN user_roles ur ON u.uid = ur.user_id
+      LEFT JOIN roles r ON ur.role_id = r.id
+      LEFT JOIN clients c ON u.client_id = c.uid
+    `);
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('Employees GET / error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// GET /api/employees/:uid - Fetch a single employee
+router.get('/:uid', auth, checkPermission('employees', 'view'), async (req, res) => {
+  const { uid } = req.params;
+  try {
+    const result = await db.query(`
+      SELECT u.uid, u.username, u.email, u.created_at, u.updated_at, u.status, 
+             COALESCE(u.role, r.name, '') as role, u.first_name, u.last_name, u.name,
+             u.academic_title, u.salutation, u.gender, u.phone, u.website,
+             u.employment_start, u.employment_end, u.religion, u.marital_status,
+             u.education, u.date_of_birth, u.place_of_birth, u.country_of_birth,
+             u.birth_name, u.citizenship, u.place_of_residence, u.street1,
+             u.street2, u.zip, u.city, u.state, u.country, u.bank_name,
+             u.bank_code_no, u.bank_account_no, u.iban, u.swift_bic, u.client_id,
+             c.client_name
+      FROM fe_users u
+      LEFT JOIN user_roles ur ON u.uid = ur.user_id
+      LEFT JOIN roles r ON ur.role_id = r.id
+      LEFT JOIN clients c ON u.client_id = c.uid
+      WHERE u.uid = $1
+    `, [uid]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+    res.json({ data: result.rows[0] });
+  } catch (err) {
+    console.error('Employee GET /:uid error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 // POST /api/employees - Create a new employee
 router.post('/', auth, checkPermission('employees', 'add'), async (req, res) => {
   const { first_name, last_name, email, password, status, role, client_id } = req.body;
@@ -35,7 +90,7 @@ router.post('/', auth, checkPermission('employees', 'add'), async (req, res) => 
   }
 });
 
-// Previous PUT route for updates (from earlier response)
+// PUT /api/employees/:uid - Update an employee
 router.put('/:uid', auth, checkPermission('employees', 'edit'), async (req, res) => {
   const { uid } = req.params;
   const {
@@ -148,6 +203,29 @@ router.put('/:uid', auth, checkPermission('employees', 'edit'), async (req, res)
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Update employee error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE /api/employees/:uid - Delete an employee
+router.delete('/:uid', auth, checkPermission('employees', 'delete'), async (req, res) => {
+  const { uid } = req.params;
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM user_roles WHERE user_id = $1', [uid]);
+    const result = await client.query('DELETE FROM fe_users WHERE uid = $1', [uid]);
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+    await client.query('COMMIT');
+    res.json({ message: 'Employee deleted' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Delete employee error:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   } finally {
     client.release();

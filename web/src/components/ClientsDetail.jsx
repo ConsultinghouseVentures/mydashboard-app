@@ -1,11 +1,11 @@
-// web/src/components/ClientsDetail.jsx
+// src/components/ClientsDetail.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Typography, Box, Button, IconButton, Tabs, Tab, Paper, CircularProgress, Grid, FormControl, InputLabel, Select, MenuItem, TextField } from '@mui/material';
 import { ArrowBack, Edit, Save, Add } from '@mui/icons-material';
 import api from '../services/api';
 import { useSnackbar } from '../context/SnackbarContext';
-import { useClientData } from '../hooks/useClientData';
+import useClientData from '../hooks/useClientData'; // Updated to default import
 import DataTable from './DataTable';
 import AddEmployeeForm from './AddEmployeeForm';
 import formFields from '../config/formConfig';
@@ -24,7 +24,7 @@ const ClientsDetail = () => {
   const { uid } = useParams();
   const navigate = useNavigate();
   const { showSnackbar } = useSnackbar();
-  const { client, employees, isLoading, error, setClient, setEmployees } = useClientData(uid);
+  const { client, employees, isLoading, error, setClient, setEmployees } = useClientData(uid || null); // Handle undefined uid
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({});
   const [tabValue, setTabValue] = useState(0);
@@ -36,7 +36,7 @@ const ClientsDetail = () => {
     password: '',
     status: 'Active',
     role: 'Employee',
-    client_id: uid,
+    client_id: uid || '',
   });
   const [addEmployeeLoading, setAddEmployeeLoading] = useState(false);
 
@@ -50,12 +50,21 @@ const ClientsDetail = () => {
     }
   }, [client]);
 
+  useEffect(() => {
+    // Update addEmployeeFormData when uid changes
+    setAddEmployeeFormData((prev) => ({ ...prev, client_id: uid || '' }));
+  }, [uid]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
+    if (!uid) {
+      showSnackbar('Invalid client ID', 'error');
+      return;
+    }
     const token = localStorage.getItem('token');
     if (!token) {
       showSnackbar('No authentication token found', 'error');
@@ -81,6 +90,10 @@ const ClientsDetail = () => {
   };
 
   const handleAddEmployeeSubmit = async () => {
+    if (!uid) {
+      showSnackbar('Invalid client ID', 'error');
+      return;
+    }
     if (!addEmployeeFormData.first_name || !addEmployeeFormData.last_name || !addEmployeeFormData.email || !addEmployeeFormData.password) {
       showSnackbar('Missing required fields', 'error');
       return;
@@ -98,14 +111,14 @@ const ClientsDetail = () => {
         timeout: 30000,
       });
       showSnackbar('Employee added successfully', 'success');
-      const employeesRes = await api.get(`/employees?client_id=${uid}`, {
+      const employeesRes = await api.get(`/employees?client_id=${uid}&role=Employee`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 30000,
       });
       console.log('Employees response after adding:', employeesRes.data);
       setEmployees(employeesRes.data.data || []);
       setOpenAddEmployee(false);
-      setAddEmployeeFormData({ first_name: '', last_name: '', email: '', password: '', status: 'Active', role: 'Employee', client_id: uid });
+      setAddEmployeeFormData({ first_name: '', last_name: '', email: '', password: '', status: 'Active', role: 'Employee', client_id: uid || '' });
     } catch (err) {
       console.error('Add employee error:', err);
       showSnackbar(err.response?.data?.message || 'Failed to add employee', 'error');
@@ -126,7 +139,7 @@ const ClientsDetail = () => {
     );
   }
 
-  const filteredEmployees = employees.filter(emp => emp.role.toLowerCase() === 'employee');
+  const filteredEmployees = employees.filter(emp => emp.role === 'Employee');
 
   return (
     <Box sx={{ p: 3, width: '100%' }}>
@@ -198,7 +211,7 @@ const ClientsDetail = () => {
             columns={[
               { field: 'name', headerName: 'Name' },
               { field: 'email', headerName: 'Email' },
-              { field: 'user_roles', headerName: 'User Roles' },
+              { field: 'role', headerName: 'Role' },
               {
                 field: 'actions',
                 headerName: 'Actions',
@@ -217,7 +230,7 @@ const ClientsDetail = () => {
             data={filteredEmployees.map((emp) => ({
               ...emp,
               name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
-              user_roles: emp.user_roles ? emp.user_roles.replace(/[{}]/g, '').split(',').join(', ') : '',
+              role: emp.role || '',
             }))}
           />
         </TabPanel>
@@ -234,5 +247,3 @@ const ClientsDetail = () => {
     </Box>
   );
 };
-
-export default ClientsDetail;

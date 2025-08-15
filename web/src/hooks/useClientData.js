@@ -1,62 +1,42 @@
-// web/src/hooks/useClientData.js
+// src/hooks/useClientData.js
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api from '../services/api';
-import { useSnackbar } from '../context/SnackbarContext';
+import api from '../services/api'; // Corrected import path
 
-export const useClientData = (uid) => {
-  const navigate = useNavigate();
-  const { showSnackbar } = useSnackbar();
+const useClientData = (clientId) => {
   const [client, setClient] = useState(null);
-  const [employees, setEmployees] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchClient = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        showSnackbar('No authentication token found', 'error');
-        navigate('/login', { replace: true });
-        setIsLoading(false);
-        return;
-      }
-      setIsLoading(true);
-      try {
-        console.log('Fetching client for UID:', uid);
-        const response = await api.get(`/clients/${uid}`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 30000,
-        });
-        const data = response.data.data || response.data;
-        if (!data || Object.keys(data).length === 0 || !data.uid) {
-          throw new Error('Invalid client data');
-        }
-        setClient(data);
-        const employeesRes = await api.get(`/employees?client_id=${uid}&role=Employee`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 30000,
-        });
-        console.log('Employees response:', employeesRes.data);
-        console.log('Employee data structure:', employeesRes.data.data);
-        setEmployees(employeesRes.data.data || []);
-        setError(null);
-      } catch (err) {
-        console.error('Fetch client error:', err);
-        setError(err.response?.data?.message || 'Failed to fetch client details');
-        if (err.response?.status === 401) {
-          localStorage.removeItem('token');
-          showSnackbar('Unauthorized: Please log in again', 'error');
-          navigate('/login', { replace: true });
-        } else {
-          showSnackbar('Failed to load client details', 'error');
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchClient();
-  }, [uid, navigate, showSnackbar]);
+  const fetchClient = async (id) => {
+    console.log('Fetching client for UID:', id);
+    if (!id || id === 'undefined' || typeof id !== 'string' || id.trim() === '') {
+      console.warn('Skipping API call due to invalid client ID:', id);
+      setError('Invalid client ID');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await api.get(`/api/clients/${id}`);
+      setClient(response.data);
+      setError(null);
+    } catch (err) {
+      setError('Failed to fetch client data');
+      console.error('Fetch client error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  return { client, employees, isLoading, error, setClient, setEmployees };
+  useEffect(() => {
+    if (!clientId || clientId === 'undefined' || typeof clientId !== 'string' || clientId.trim() === '') {
+      console.warn('useEffect: Invalid clientId, skipping fetch:', clientId);
+      setError('Invalid client ID');
+      return;
+    }
+    fetchClient(clientId);
+  }, [clientId]);
+
+  return { client, loading, error };
 };
+
+export default useClientData;
