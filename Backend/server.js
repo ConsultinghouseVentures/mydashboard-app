@@ -1,4 +1,4 @@
-// backend/server.js
+// Path: backend/server.js
 const express = require('express');
 const { Pool } = require('pg');
 require('dotenv').config();
@@ -57,7 +57,7 @@ app.get('/', (req, res) => {
 app.use((err, req, res, next) => {
   console.error('Global error:', err.message);
   res.status(500).json({ error: 'Server error' });
-});
+}); 
 
 module.exports = app; // Export the app for Vercel
 

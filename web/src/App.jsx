@@ -1,4 +1,4 @@
-// web/src/App.jsx
+// Path: src/App.jsx
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Box, Toolbar, CircularProgress, Typography, Button } from '@mui/material';

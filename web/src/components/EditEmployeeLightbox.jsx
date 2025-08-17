@@ -44,10 +44,10 @@ const EditEmployeeLightbox = ({ open, mode, data, clients, onClose, onSave, ligh
         return;
       }
       try {
-        const response = await api.get(`/employees/${data.uid}`, {
+        const response = await api.getEmployee(data.uid, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const employeeData = response.data.data || response.data;
+        const employeeData = response.data || response;
         setFormData({
           uid: employeeData.uid,
           first_name: employeeData.first_name || '',

@@ -1,4 +1,4 @@
-// src/services/api.js
+// Path: web/src/services/api.js
 import axios from 'axios';
 
 const api = axios.create({

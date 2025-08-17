@@ -1,4 +1,4 @@
-// src/components/Clients.jsx
+// Path: src/components/Clients.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Typography, Box, Button, Paper, CircularProgress } from '@mui/material';
@@ -12,17 +12,8 @@ const Clients = () => {
   const navigate = useNavigate();
   const { showSnackbar } = useSnackbar();
   const { user } = useUser();
-  const [clientId, setClientId] = useState(null);
+  const [clientId, setClientId] = useState(user?.client_id || null);
   const { clients, isLoading, error } = useClientData(clientId);
-
-  useEffect(() => {
-    if (user?.client_id) {
-      setClientId(user.client_id);
-    } else {
-      console.warn('No clientId found, fetching all clients');
-      setClientId(null); // Explicitly set to null to fetch all clients
-    }
-  }, [user]);
 
   useEffect(() => {
     if (error) {

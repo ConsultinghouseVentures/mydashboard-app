@@ -1,7 +1,7 @@
 // Path: src/components/Employees.jsx
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutTableOverview, LayoutContext } from './Layout_TableOverview.jsx';
+import { LayoutTableOverview, LayoutContext } from './Layout_TableOverview';
 import {
   Typography,
   Box,
@@ -234,11 +234,11 @@ const Employees = () => {
           return;
         }
         const [employeesResponse, clientsResponse] = await Promise.all([
-          api.get('/employees', { headers: { Authorization: `Bearer ${token}` } }),
+          api.getEmployees({ headers: { Authorization: `Bearer ${token}` } }),
           api.get('/clients', { headers: { Authorization: `Bearer ${token}` } }),
         ]);
 
-        const employeesData = Array.isArray(employeesResponse.data.data) ? employeesResponse.data.data : Array.isArray(employeesResponse.data) ? employeesResponse.data : [];
+        const employeesData = Array.isArray(employeesResponse.data) ? employeesResponse.data : Array.isArray(employeesResponse) ? employeesResponse : [];
         const formattedData = employeesData.map((row) => ({
           ...row,
           created_at: row.created_at ? new Date(row.created_at * 1000) : null,
@@ -246,7 +246,7 @@ const Employees = () => {
         }));
         setEmployees(formattedData);
 
-        const clientsData = Array.isArray(clientsResponse.data.data) ? clientsResponse.data.data : Array.isArray(clientsResponse.data) ? clientsResponse.data : [];
+        const clientsData = Array.isArray(clientsResponse.data) ? clientsResponse.data : Array.isArray(clientsResponse) ? clientsResponse : [];
         setClients(clientsData);
 
         setError(null);
@@ -343,10 +343,10 @@ const Employees = () => {
       return;
     }
     try {
-      const response = await api.put(`/employees/${updatedData.uid}`, updatedData, {
+      const response = await api.updateEmployee(updatedData.uid, updatedData, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const newData = response.data.data || response.data;
+      const newData = response.data || response;
       if (!newData || !newData.uid) {
         throw new Error('Invalid response data');
       }
@@ -405,10 +405,10 @@ const Employees = () => {
       const updatedData = { ...updatedEmployee, [field]: value };
       try {
         const token = localStorage.getItem('token');
-        const response = await api.put(`/employees/${id}`, updatedData, {
+        const response = await api.updateEmployee(id, updatedData, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const newData = response.data.data || response.data;
+        const newData = response.data || response;
         setEmployees((prev) => prev.map((c) => (c.uid === newData.uid ? newData : c)));
         showSnackbar('Employee updated successfully', 'success');
         return value;
@@ -454,7 +454,7 @@ const Employees = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       showSnackbar('Employee added successfully', 'success');
-      setEmployees((prev) => [...prev, response.data.data || response.data]);
+      setEmployees((prev) => [...prev, response.data || response]);
       setOpenAddDialog(false);
       setAddFormData({
         first_name: '',
